@@ -1,6 +1,81 @@
 // 3D Chibi Stickman Runner Spritesheet Generator (Count Masters / Mob Control Style)
 // Solid vibrant cartoon colors with subtle black outlines (no gloss highlights)
 
+export function generateProjectileTexture(scene) {
+    if (scene.textures.exists('spike_projectile')) {
+        return 'spike_projectile';
+    }
+    const width = 40;
+    const height = 48;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+
+    const cx = width / 2;
+    const cy = 20;
+
+    // Small dark wooden handle at bottom
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(cx - 2.5, cy + 9, 5, 12);
+    ctx.strokeStyle = '#18181b';
+    ctx.lineWidth = 1.0;
+    ctx.strokeRect(cx - 2.5, cy + 9, 5, 12);
+
+    // Cyan spiked mace head (tapered teardrop)
+    ctx.fillStyle = '#06b6d4';
+    ctx.beginPath();
+    ctx.moveTo(cx - 3.5, cy + 9);
+    ctx.lineTo(cx - 8.5, cy);
+    ctx.arc(cx, cy, 8.5, Math.PI, 0);
+    ctx.lineTo(cx + 3.5, cy + 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#18181b';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+
+    // Red spikes helper
+    function drawSpike(sx, sy, angle, len) {
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(angle);
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.moveTo(0, -2.2);
+        ctx.lineTo(len, 0);
+        ctx.lineTo(0, 2.2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#18181b';
+        ctx.lineWidth = 0.9;
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // Sharp spikes around head (matching reference image)
+    drawSpike(cx - 8.5, cy, Math.PI, 6.0);
+    drawSpike(cx + 8.5, cy, 0, 6.0);
+    drawSpike(cx - 6.5, cy - 6.5, Math.PI * 0.75, 5.5);
+    drawSpike(cx + 6.5, cy - 6.5, Math.PI * 0.25, 5.5);
+    drawSpike(cx - 6.0, cy + 5.5, Math.PI * 1.15, 5.0);
+    drawSpike(cx + 6.0, cy + 5.5, -Math.PI * 0.15, 5.0);
+    drawSpike(cx, cy - 8.5, -Math.PI / 2, 6.5);
+
+    // Center red stud
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#18181b';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+
+    scene.textures.addCanvas('spike_projectile', canvas);
+    return 'spike_projectile';
+}
+
 export function generate3DRunnerFrames(scene, colorTheme = 'blue') {
     const isBlue = colorTheme === 'blue';
     const prefix = isBlue ? 'blue_run_' : 'red_run_';
@@ -24,17 +99,17 @@ export function generate3DRunnerFrames(scene, colorTheme = 'blue') {
         outline: '#18181b',
         shadow: 'rgba(0, 0, 0, 0.25)'
     } : {
-        // Red Enemy Soldier
+        // Red Enemy Soldier (matching reference screenshot)
         body: '#ef4444',
-        shorts: '#334155',
-        belt: '#991b1b',
-        sash: '#7f1d1d',
-        sashStitch: '#fca5a5',
-        clubHead: '#475569',
-        spike: '#ef4444',
-        handle: '#450a0a',
-        handleWrap: '#1e293b',
-        sole: '#18181b',
+        shorts: '#ef4444',
+        belt: '#fef08a',
+        sash: '#ffffff',
+        sashStitch: '#fee2e2',
+        clubHead: '#f87171',
+        spike: '#fca5a5',
+        handle: '#fef3c7',
+        handleWrap: '#ffffff',
+        sole: '#991b1b',
         outline: '#18181b',
         shadow: 'rgba(0, 0, 0, 0.25)'
     };
@@ -87,12 +162,57 @@ export function generate3DRunnerFrames(scene, colorTheme = 'blue') {
         ctx.restore();
     }
 
-    // Helper: Draw Spiked Club Weapon with subtle black outline
+    // Helper: Draw Spiked Club or Wooden Bat Weapon with subtle black outline
     function drawSpikedClub(ctx, handX, handY) {
         ctx.save();
         const clubAngle = 0.25; // slants slightly outward from right hand
         ctx.translate(handX, handY);
         ctx.rotate(clubAngle);
+
+        if (!isBlue) {
+            // Red Enemy: Light wooden / salmon pink baseball bat (matching reference screenshot)
+            const batLen = 25;
+            
+            // Bat Handle
+            ctx.fillStyle = '#fef3c7';
+            ctx.fillRect(-2, -3, 4, 13);
+            ctx.strokeStyle = colors.outline;
+            ctx.lineWidth = 0.9;
+            ctx.strokeRect(-2, -3, 4, 13);
+
+            // Handle bottom knob
+            ctx.fillStyle = '#f87171';
+            ctx.beginPath();
+            ctx.arc(0, 10, 3.2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Bat body (tapered baseball bat)
+            ctx.fillStyle = '#f87171';
+            ctx.beginPath();
+            ctx.moveTo(-2.5, -3);
+            ctx.lineTo(-5.6, -batLen);
+            ctx.arc(0, -batLen, 5.6, Math.PI, 0);
+            ctx.lineTo(2.5, -3);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = colors.outline;
+            ctx.lineWidth = 1.1;
+            ctx.stroke();
+
+            // Highlight line on bat
+            ctx.fillStyle = '#fca5a5';
+            ctx.beginPath();
+            ctx.moveTo(-1, -4);
+            ctx.lineTo(-2.8, -batLen + 2);
+            ctx.lineTo(-0.8, -batLen + 2);
+            ctx.lineTo(0.8, -4);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+            return;
+        }
 
         // Handle
         ctx.fillStyle = colors.handle;

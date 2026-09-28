@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { generate3DRunnerFrames } from './assets/spritesheetGenerator.js';
+import { generate3DRunnerFrames, generateProjectileTexture } from './assets/spritesheetGenerator.js';
 
 // Import sound assets for Vite bundling & single-file inlining
 import sfxClick from './assets/Sound/click.mp3';
@@ -12,6 +12,7 @@ const DEPTH = {
     ROAD: 20,
     ROAD_BORDER: 30,
     WORLD_BASE: 100, // World objects (gates, runners, enemies) get: WORLD_BASE + Math.floor(y * 10)
+    ROAD_ENEMY_BUBBLE: 5500,
     PLAYER_BUBBLE: 6000,
     ENEMY_BUBBLE: 6100,
     POPUP_FX: 8000,
@@ -55,7 +56,7 @@ export class GameScene extends Phaser.Scene {
 
         this.gameState = 'TUTORIAL'; // TUTORIAL, RUNNING, BATTLE, ENDCARD
         this.crowdCount = 1; // Starts with 1 single runner
-        this.enemyArmyCount = 120; // Final enemy army count to beat
+        this.enemyArmyCount = 55; // Balanced final enemy army count
         this.playerLaneX = 0; // Normalized -1 to +1 relative to road center
         this.targetLaneX = 0;
         this.playerScreenY = this.h * 0.76;
@@ -63,6 +64,10 @@ export class GameScene extends Phaser.Scene {
         this.distanceTravelled = 0;
         this.isInteracted = false;
         this.hasTriggeredStore = false;
+
+        // Projectiles & Shooting
+        this.projectiles = [];
+        this.shootTimer = 0;
 
         this.generateTextures();
         this.createStadiumBackground();
@@ -132,6 +137,9 @@ export class GameScene extends Phaser.Scene {
         // 1. Generate 3D Animated Runner Spritesheets (Blue and Red)
         this.blueAnimKey = generate3DRunnerFrames(this, 'blue');
         this.redAnimKey = generate3DRunnerFrames(this, 'red');
+
+        // 2. Generate Spiked Club Projectile Texture
+        this.projectileKey = generateProjectileTexture(this);
 
         // 2. Blue Speech Bubble
         if (!this.textures.exists('bubble_blue')) {
@@ -315,34 +323,51 @@ export class GameScene extends Phaser.Scene {
     }
 
     createTrackElements() {
-        // 4 Gate Sets spaced across extended track length
+        this.finalGatePassed = false;
+
+        // Gates spaced across extended track length
         this.gates = [
             {
-                distance: 480,
+                distance: 280,
                 passed: false,
-                left: { type: '+', val: 10, label: '+10', color: 0x0284c7 },
-                right: { type: '+', val: 25, label: '+25', color: 0x10b981 },
+                side: 'right', // Gate 1: Positive (+8) on right
+                effect: { type: '+', val: 8, label: '+8', color: 0x10b981 },
                 container: this.add.container(0, 0)
             },
             {
-                distance: 1040,
+                distance: 900,
                 passed: false,
-                left: { type: 'x', val: 2, label: 'x2', color: 0xf59e0b },
-                right: { type: '+', val: 15, label: '+15', color: 0x0284c7 },
+                side: 'left', // Gate 2: Multiplier (x2) on left
+                effect: { type: 'x', val: 2, label: 'x2', color: 0x0284c7 },
                 container: this.add.container(0, 0)
             },
             {
-                distance: 1600,
+                distance: 1520,
                 passed: false,
-                left: { type: '+', val: 40, label: '+40', color: 0x0284c7 },
-                right: { type: 'x', val: 3, label: 'x3', color: 0x10b981 },
+                side: 'right', // Gate 3: Danger trap gate (÷2) on right (dodge left)
+                effect: { type: '÷', val: 2, label: '÷2', color: 0xef4444 },
                 container: this.add.container(0, 0)
             },
             {
-                distance: 2160,
+                distance: 2060,
                 passed: false,
-                left: { type: 'x', val: 2, label: 'x2', color: 0x0284c7 },
-                right: { type: 'x', val: 4, label: 'x4', color: 0xf59e0b },
+                side: 'left', // Gate 4: Positive (+10) on left
+                effect: { type: '+', val: 10, label: '+10', color: 0x10b981 },
+                container: this.add.container(0, 0)
+            },
+            {
+                distance: 2280,
+                passed: false,
+                side: 'left', // Gate 5: Danger trap gate (-8) on left (dodge right)
+                effect: { type: '-', val: 8, label: '-8', color: 0xef4444 },
+                container: this.add.container(0, 0)
+            },
+            {
+                distance: 2680,
+                passed: false,
+                isFinalGate: true,
+                side: 'right', // Gate 6: FINAL GATE (x2) on right
+                effect: { type: 'x', val: 2, label: 'x2', color: 0x0284c7 },
                 container: this.add.container(0, 0)
             }
         ];
@@ -353,11 +378,37 @@ export class GameScene extends Phaser.Scene {
         });
 
         // ==========================================
-        // FINISH DESTINATION: RED MOB ARMY BATTLE
+        // ROAD ENEMIES STANDING ALONG THE TRACK
         // ==========================================
-        this.finishDistance = 2680;
+        this.roadEnemies = [
+            // Wave 1: After Gate 1 (distance 580) - 2 enemies side-by-side (matching reference)
+            { id: 1, distance: 580, lane: -0.42, maxHp: 8, hp: 8, alive: true },
+            { id: 2, distance: 580, lane: 0.42, maxHp: 8, hp: 8, alive: true },
 
-        // Red Army Mob waiting at the finish line
+            // Wave 2: After Gate 2 (distance 1220) - 2 enemies
+            { id: 3, distance: 1220, lane: -0.38, maxHp: 14, hp: 14, alive: true },
+            { id: 4, distance: 1220, lane: 0.38, maxHp: 14, hp: 14, alive: true },
+
+            // Wave 3: After Gate 3 (distance 1780) - 3 enemies
+            { id: 5, distance: 1780, lane: -0.52, maxHp: 20, hp: 20, alive: true },
+            { id: 6, distance: 1780, lane: 0.0, maxHp: 20, hp: 20, alive: true },
+            { id: 7, distance: 1780, lane: 0.52, maxHp: 20, hp: 20, alive: true },
+
+            // Wave 4: After Gate 5 (distance 2480) - 3 enemies
+            { id: 8, distance: 2480, lane: -0.45, maxHp: 25, hp: 25, alive: true },
+            { id: 9, distance: 2480, lane: 0.0, maxHp: 25, hp: 25, alive: true },
+            { id: 10, distance: 2480, lane: 0.45, maxHp: 25, hp: 25, alive: true }
+        ];
+
+        this.roadEnemies.forEach(e => {
+            this.buildRoadEnemy(e);
+        });
+
+        // ==========================================
+        this.finalGatePassed = false;
+        this.finalEnemyDistance = null;
+
+        // Red Army Mob waiting at the finish line (spawns at horizon after final gate)
         this.enemyArmyContainer = this.add.container(this.centerX, -200);
         this.enemyArmyContainer.setVisible(false);
 
@@ -390,15 +441,50 @@ export class GameScene extends Phaser.Scene {
         this.enemyArmyContainer.add(this.enemyBubble);
     }
 
+    buildRoadEnemy(enemy) {
+        const container = this.add.container(0, 0);
+
+        // Ground shadow for road enemy
+        const shadow = this.add.ellipse(0, 36, 30, 9, 0x000000, 0.25);
+
+        // Animated Red Runner sprite with baseball bat
+        const sprite = this.add.sprite(0, 0, 'red_run_0').setScale(0.95);
+        sprite.play('red_runner_run');
+        sprite.anims.setProgress(Math.random());
+
+        // HP Badge floating above head
+        const hpContainer = this.add.container(0, -48);
+        const badgeBg = this.add.graphics();
+        badgeBg.fillStyle(0xef4444, 0.95);
+        badgeBg.fillRoundedRect(-18, -11, 36, 22, 11);
+        badgeBg.lineStyle(2, 0xffffff, 1);
+        badgeBg.strokeRoundedRect(-18, -11, 36, 22, 11);
+
+        const hpText = this.add.text(0, 0, `${enemy.hp}`, {
+            fontSize: '13px',
+            fontFamily: 'Arial Black',
+            color: '#ffffff'
+        }).setOrigin(0.5);
+
+        hpContainer.add([badgeBg, hpText]);
+
+        container.add([shadow, sprite, hpContainer]);
+        container.setVisible(false);
+
+        enemy.container = container;
+        enemy.sprite = sprite;
+        enemy.hpContainer = hpContainer;
+        enemy.hpText = hpText;
+    }
+
     buildGate3D(gate) {
         const bg = this.add.graphics();
         gate.graphics = bg;
 
-        const leftPost = this.add.rectangle(-80, 0, 10, 48, 0xbae6fd).setStrokeStyle(2, 0xffffff);
-        const midPost = this.add.rectangle(0, 0, 10, 48, 0xbae6fd).setStrokeStyle(2, 0xffffff);
-        const rightPost = this.add.rectangle(80, 0, 10, 48, 0xbae6fd).setStrokeStyle(2, 0xffffff);
+        const post1 = this.add.rectangle(0, 0, 10, 48, 0xbae6fd).setStrokeStyle(2, 0xffffff);
+        const post2 = this.add.rectangle(0, 0, 10, 48, 0xbae6fd).setStrokeStyle(2, 0xffffff);
 
-        const leftText = this.add.text(-40, 0, gate.left.label, {
+        const text = this.add.text(0, 0, gate.effect.label, {
             fontSize: '32px',
             fontFamily: 'Arial Black, Impact',
             color: '#ffffff',
@@ -406,21 +492,11 @@ export class GameScene extends Phaser.Scene {
             strokeThickness: 5
         }).setOrigin(0.5);
 
-        const rightText = this.add.text(40, 0, gate.right.label, {
-            fontSize: '32px',
-            fontFamily: 'Arial Black, Impact',
-            color: '#ffffff',
-            stroke: '#0284c7',
-            strokeThickness: 5
-        }).setOrigin(0.5);
+        gate.post1 = post1;
+        gate.post2 = post2;
+        gate.text = text;
 
-        gate.leftPost = leftPost;
-        gate.midPost = midPost;
-        gate.rightPost = rightPost;
-        gate.leftText = leftText;
-        gate.rightText = rightText;
-
-        gate.container.add([bg, leftPost, midPost, rightPost, leftText, rightText]);
+        gate.container.add([bg, post1, post2, text]);
     }
 
     updateGate3D(gate, screenY) {
@@ -444,22 +520,21 @@ export class GameScene extends Phaser.Scene {
         gate.container.setDepth(DEPTH.WORLD_BASE + Math.floor(screenY * 10));
 
         const halfW = turfWidth / 2 / scale;
-        gate.leftPost.x = -halfW;
-        gate.rightPost.x = halfW;
-        gate.midPost.x = 0;
+        const isLeft = gate.side === 'left';
 
-        gate.leftText.x = -halfW * 0.5;
-        gate.rightText.x = halfW * 0.5;
+        const xStart = isLeft ? -halfW : 0;
+        const xEnd = isLeft ? 0 : halfW;
+        const xMid = (xStart + xEnd) / 2;
+
+        gate.post1.x = xStart;
+        gate.post2.x = xEnd;
+        gate.text.x = xMid;
 
         gate.graphics.clear();
-        gate.graphics.fillStyle(gate.left.color, 0.45);
-        gate.graphics.fillRect(-halfW, -24, halfW, 48);
+        gate.graphics.fillStyle(gate.effect.color, 0.48);
+        gate.graphics.fillRect(xStart, -24, halfW, 48);
         gate.graphics.lineStyle(3, 0xffffff, 0.95);
-        gate.graphics.strokeRect(-halfW, -24, halfW, 48);
-
-        gate.graphics.fillStyle(gate.right.color, 0.45);
-        gate.graphics.fillRect(0, -24, halfW, 48);
-        gate.graphics.strokeRect(0, -24, halfW, 48);
+        gate.graphics.strokeRect(xStart, -24, halfW, 48);
     }
 
     createCrowd() {
@@ -563,8 +638,6 @@ export class GameScene extends Phaser.Scene {
             duration: 300,
             onComplete: () => this.dragPrompt.setVisible(false)
         });
-
-        this.playSfx('sfx_click');
     }
 
     playSfx(key) {
@@ -573,6 +646,124 @@ export class GameScene extends Phaser.Scene {
                 this.sound.play(key, { volume: 0.6 });
             }
         } catch (e) { }
+    }
+
+    fireProjectiles() {
+        if (this.gameState !== 'RUNNING') return;
+
+        // Scale number of projectiles with squad count
+        let numProjectiles = 1;
+        if (this.crowdCount >= 40) numProjectiles = 6;
+        else if (this.crowdCount >= 20) numProjectiles = 4;
+        else if (this.crowdCount >= 8) numProjectiles = 3;
+        else if (this.crowdCount >= 2) numProjectiles = 2;
+
+        const runnerCount = Math.max(1, this.runners.length);
+
+        for (let i = 0; i < numProjectiles; i++) {
+            const runner = this.runners[i % runnerCount] || { offsetX: 0, offsetY: 0 };
+            // Compute the exact fixed lane of the specific runner firing this bullet
+            const runnerLane = this.playerLaneX + (runner.offsetX / 80);
+
+            const projSprite = this.add.sprite(0, 0, 'spike_projectile').setOrigin(0.5, 0.5);
+            const proj = {
+                sprite: projSprite,
+                distance: this.distanceTravelled + 25 + i * 6,
+                lane: runnerLane, // Straight fixed trajectory along this runner's lane
+                speed: 700,
+                spinSpeed: Phaser.Math.Between(360, 720),
+                dead: false
+            };
+            this.projectiles.push(proj);
+        }
+    }
+
+    hitRoadEnemy(enemy, hitX, hitY) {
+        if (!enemy.alive) return;
+        enemy.hp--;
+        enemy.hpText.setText(`${Math.max(0, enemy.hp)}`);
+
+        // Flash tint & scale punch
+        enemy.sprite.setTint(0xffffff);
+        this.time.delayedCall(50, () => {
+            if (enemy.sprite && enemy.sprite.active) enemy.sprite.clearTint();
+        });
+
+        this.tweens.add({
+            targets: enemy.hpContainer,
+            scale: 1.25,
+            duration: 60,
+            yoyo: true
+        });
+
+        // Small cyan and red impact sparks
+        this.spawnSplash(hitX, hitY, 0x06b6d4, 3);
+        this.spawnSplash(hitX, hitY, 0xef4444, 3);
+
+        if (enemy.hp <= 0) {
+            enemy.alive = false;
+            // Camera shake & early SFX removed
+            this.spawnSplash(hitX, hitY, 0xef4444, 25);
+            this.spawnSplash(hitX, hitY, 0xfacc15, 15);
+
+            // Floating defeat popup
+            const koText = this.add.text(hitX, hitY - 35, '💥 K.O!', {
+                fontSize: '22px',
+                fontFamily: 'Arial Black',
+                color: '#facc15',
+                stroke: '#000000',
+                strokeThickness: 4
+            }).setOrigin(0.5).setDepth(DEPTH.POPUP_FX);
+
+            this.tweens.add({
+                targets: koText,
+                y: '-=60',
+                alpha: 0,
+                scale: 1.2,
+                duration: 700,
+                ease: 'Power2',
+                onComplete: () => koText.destroy()
+            });
+
+            // Reward bonus soldiers
+            this.crowdCount += 2;
+            this.bubbleCountText.setText(`${this.crowdCount}`);
+            this.updateCrowdVisuals();
+
+            // Defeat animation
+            this.tweens.add({
+                targets: enemy.container,
+                scale: 0.1,
+                alpha: 0,
+                duration: 250,
+                onComplete: () => {
+                    enemy.container.setVisible(false);
+                }
+            });
+        }
+    }
+
+    hitFinishArmy(hitX, hitY) {
+        if (this.enemyArmyCount <= 0) return;
+        this.enemyArmyCount = Math.max(0, this.enemyArmyCount - 1);
+        this.enemyBubbleText.setText(`${this.enemyArmyCount}`);
+        this.spawnSplash(hitX, hitY, 0xef4444, 4);
+
+        // Visually remove enemy soldiers as count drops
+        const targetSoldiers = Math.min(this.enemySoldiers.length, Math.ceil(this.enemyArmyCount * 35 / 55));
+        while (this.enemySoldiers.length > targetSoldiers && this.enemySoldiers.length > 0) {
+            const s = this.enemySoldiers.pop();
+            if (s && s.active) {
+                this.spawnSplash(hitX, hitY, 0xef4444, 3);
+                s.destroy();
+            }
+        }
+
+        if (this.enemyArmyCount <= 0) {
+            this.enemyArmyContainer.setVisible(false);
+            this.spawnSplash(hitX, hitY, 0xfacc15, 30);
+            this.finishBattle(true);
+        }
     }
 
     update(time, delta) {
@@ -610,7 +801,125 @@ export class GameScene extends Phaser.Scene {
         if (this.gameState === 'RUNNING') {
             this.distanceTravelled += this.scrollSpeed * dt;
 
-            // Update All 4 Gates
+            // Check if final gate (distance 2680) has been passed
+            if (this.distanceTravelled >= 2680) {
+                this.finalGatePassed = true;
+            }
+
+            // Continuous auto-shooting during run
+            this.shootTimer += dt;
+            const shootInterval = 0.14;
+            if (this.shootTimer >= shootInterval) {
+                this.shootTimer = 0;
+                this.fireProjectiles();
+            }
+
+            // Update Active Projectiles (Maintain exact fixed lane trajectory)
+            for (let i = this.projectiles.length - 1; i >= 0; i--) {
+                const p = this.projectiles[i];
+                p.distance += p.speed * dt;
+
+                const projDistFromPlayer = p.distance - this.distanceTravelled;
+                const projScreenY = this.playerScreenY - projDistFromPlayer;
+
+                if (p.dead || projScreenY < this.horizonY - 10 || projDistFromPlayer > 1100) {
+                    p.sprite.destroy();
+                    this.projectiles.splice(i, 1);
+                    continue;
+                }
+
+                const pt = this.getRoadPoint(p.lane, projScreenY);
+                p.sprite.x = pt.x;
+                p.sprite.y = pt.y;
+                p.sprite.setScale(pt.scale * 0.9);
+                p.sprite.angle += p.spinSpeed * dt;
+                p.sprite.setDepth(DEPTH.WORLD_BASE + Math.floor(pt.y * 10) + 2);
+
+                // Collision with Road Enemies
+                for (const enemy of this.roadEnemies) {
+                    if (!enemy.alive) continue;
+                    const distDiff = Math.abs(p.distance - enemy.distance);
+                    const laneDiff = Math.abs(p.lane - enemy.lane);
+
+                    if (distDiff < 32 && laneDiff < 0.24) {
+                        p.dead = true;
+                        this.hitRoadEnemy(enemy, pt.x, pt.y);
+                        break;
+                    }
+                }
+
+                // Collision with Final Finish Army (after final gate)
+                if (!p.dead && this.finalGatePassed && this.enemyArmyCount > 0 && this.finalEnemyDistance !== null) {
+                    if (Math.abs(p.distance - this.finalEnemyDistance) < 45) {
+                        p.dead = true;
+                        this.hitFinishArmy(pt.x, pt.y);
+                    }
+                }
+            }
+
+            // Update Road Enemies (Appear naturally along the track after their respective gates)
+            this.roadEnemies.forEach(enemy => {
+                if (!enemy.alive) return;
+                const enemyDistFromPlayer = enemy.distance - this.distanceTravelled;
+                const enemyScreenY = this.playerScreenY - enemyDistFromPlayer;
+
+                if (enemyScreenY >= this.horizonY - 10 && enemyScreenY <= this.bottomY + 60) {
+                    const enemyPt = this.getRoadPoint(enemy.lane, enemyScreenY);
+                    const alpha = Phaser.Math.Clamp((enemyScreenY - this.horizonY) / 30, 0, 1);
+                    enemy.container.setVisible(true);
+                    enemy.container.setAlpha(alpha);
+                    enemy.container.x = enemyPt.x;
+                    enemy.container.y = enemyPt.y;
+                    enemy.container.setScale(enemyPt.scale);
+                    enemy.container.setDepth(DEPTH.WORLD_BASE + Math.floor(enemyScreenY * 10));
+
+                    // Collision check with player crowd
+                    if (enemyScreenY >= this.playerScreenY - 15) {
+                        const laneDiff = Math.abs(this.playerLaneX - enemy.lane);
+                        const isHit = laneDiff < 0.45 || enemyScreenY >= this.playerScreenY + 20;
+
+                        if (isHit) {
+                            enemy.alive = false;
+                            const dmg = enemy.hp; // Deduct exact remaining enemy HP
+                            this.crowdCount = Math.max(0, this.crowdCount - dmg);
+                            this.bubbleCountText.setText(`${this.crowdCount}`);
+                            this.updateCrowdVisuals();
+
+                            // Red damage popup
+                            const dmgPopup = this.add.text(enemyPt.x, enemyPt.y - 30, `-${dmg}`, {
+                                fontSize: '32px',
+                                fontFamily: 'Arial Black',
+                                color: '#ef4444',
+                                stroke: '#ffffff',
+                                strokeThickness: 5
+                            }).setOrigin(0.5).setDepth(DEPTH.POPUP_FX);
+
+                            this.tweens.add({
+                                targets: dmgPopup,
+                                y: '-=50',
+                                alpha: 0,
+                                duration: 600,
+                                onComplete: () => dmgPopup.destroy()
+                            });
+
+                            this.spawnSplash(enemyPt.x, enemyPt.y, 0xef4444, 25);
+                            enemy.container.setVisible(false);
+
+                            if (this.crowdCount <= 0) {
+                                this.finishBattle(false);
+                            }
+                        } else if (enemyScreenY > this.playerScreenY + 60) {
+                            // Safely passed behind player
+                            enemy.alive = false;
+                            enemy.container.setVisible(false);
+                        }
+                    }
+                } else {
+                    enemy.container.setVisible(false);
+                }
+            });
+
+            // Update All Gates (Single-sided for player choice)
             this.gates.forEach(gate => {
                 const gateScreenY = this.playerScreenY - (gate.distance - this.distanceTravelled);
                 if (gateScreenY >= this.horizonY && gateScreenY <= this.bottomY + 80) {
@@ -619,30 +928,48 @@ export class GameScene extends Phaser.Scene {
 
                     if (!gate.passed && gateScreenY >= this.playerScreenY - 20) {
                         gate.passed = true;
-                        const chosenSide = this.playerLaneX < 0 ? gate.left : gate.right;
-                        this.applyGateEffect(chosenSide, gateScreenY);
+                        if (gate.isFinalGate) {
+                            this.finalGatePassed = true;
+                        }
+                        const inLeftZone = this.playerLaneX <= 0.15;
+                        const inRightZone = this.playerLaneX >= -0.15;
+                        const hitGate = (gate.side === 'left' && inLeftZone) || (gate.side === 'right' && inRightZone);
+
+                        if (hitGate) {
+                            this.applyGateEffect(gate.effect, gateScreenY);
+                        }
                     }
                 } else {
                     gate.container.setVisible(false);
                 }
             });
 
-            // Enemy Army emerges at the finish distance
-            const finishDistFromPlayer = this.finishDistance - this.distanceTravelled;
-            const enemyScreenY = this.playerScreenY - finishDistFromPlayer;
+            // Final Enemy Army emerges from horizon (end of road) ONLY after passing final gate
+            if (this.finalGatePassed && this.enemyArmyCount > 0 && this.gameState !== 'ENDCARD') {
+                if (this.finalEnemyDistance === null) {
+                    // Spawn precisely at the horizon line (end of the road)
+                    this.finalEnemyDistance = this.distanceTravelled + (this.playerScreenY - this.horizonY);
+                }
 
-            if (enemyScreenY >= this.horizonY) {
-                const enemyPt = this.getRoadPoint(0, enemyScreenY);
-                const alpha = Phaser.Math.Clamp((enemyScreenY - this.horizonY) / 30, 0, 1);
-                this.enemyArmyContainer.setVisible(true);
-                this.enemyArmyContainer.setAlpha(alpha);
-                this.enemyArmyContainer.x = enemyPt.x;
-                this.enemyArmyContainer.y = enemyPt.y;
-                this.enemyArmyContainer.setScale(enemyPt.scale);
-                this.enemyArmyContainer.setDepth(DEPTH.WORLD_BASE + Math.floor(enemyScreenY * 10));
+                const enemyDistFromPlayer = this.finalEnemyDistance - this.distanceTravelled;
+                const enemyScreenY = this.playerScreenY - enemyDistFromPlayer;
 
-                if (enemyScreenY >= this.playerScreenY - 30) {
-                    this.startFinalBattle();
+                if (enemyScreenY >= this.horizonY - 5) {
+                    const enemyPt = this.getRoadPoint(0, enemyScreenY);
+                    const alpha = Phaser.Math.Clamp((enemyScreenY - this.horizonY) / 25, 0, 1);
+                    this.enemyArmyContainer.setVisible(true);
+                    this.enemyArmyContainer.setAlpha(alpha);
+                    this.enemyArmyContainer.x = enemyPt.x;
+                    this.enemyArmyContainer.y = enemyPt.y;
+                    this.enemyArmyContainer.setScale(enemyPt.scale);
+                    this.enemyArmyContainer.setDepth(DEPTH.WORLD_BASE + Math.floor(enemyScreenY * 10));
+
+                    // When enemy army meets player crowd -> start final battle
+                    if (enemyScreenY >= this.playerScreenY - 25) {
+                        this.startFinalBattle();
+                    }
+                } else {
+                    this.enemyArmyContainer.setVisible(false);
                 }
             } else {
                 this.enemyArmyContainer.setVisible(false);
@@ -651,10 +978,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     applyGateEffect(side, gateY) {
-        this.playSfx('sfx_click');
-        this.cameras.main.shake(140, 0.012);
-
-        const prev = this.crowdCount;
         let delta = 0;
 
         if (side.type === '+') {
@@ -663,6 +986,14 @@ export class GameScene extends Phaser.Scene {
         } else if (side.type === 'x') {
             delta = this.crowdCount * (side.val - 1);
             this.crowdCount = this.crowdCount * side.val;
+        } else if (side.type === '-') {
+            const actualLoss = Math.min(this.crowdCount - 1, side.val);
+            delta = -actualLoss;
+            this.crowdCount = Math.max(1, this.crowdCount - side.val);
+        } else if (side.type === '÷' || side.type === '/') {
+            const targetCount = Math.max(1, Math.floor(this.crowdCount / side.val));
+            delta = targetCount - this.crowdCount;
+            this.crowdCount = targetCount;
         }
 
         this.bubbleCountText.setText(`${this.crowdCount}`);
@@ -676,11 +1007,14 @@ export class GameScene extends Phaser.Scene {
         this.updateCrowdVisuals();
 
         const playerPt = this.getRoadPoint(this.playerLaneX, this.playerScreenY);
-        const deltaLabel = `+${delta}`;
+        const isPositive = delta >= 0;
+        const deltaLabel = isPositive ? `+${delta}` : `${delta}`;
+        const popupColor = isPositive ? '#22c55e' : '#ef4444';
+
         const popupText = this.add.text(playerPt.x, this.playerScreenY - 95, deltaLabel, {
             fontSize: '44px',
             fontFamily: 'Arial Black',
-            color: '#22c55e',
+            color: popupColor,
             stroke: '#ffffff',
             strokeThickness: 6
         }).setOrigin(0.5).setDepth(DEPTH.POPUP_FX);
@@ -688,7 +1022,7 @@ export class GameScene extends Phaser.Scene {
         const subPopup = this.add.text(playerPt.x, this.playerScreenY - 60, `TOTAL: ${this.crowdCount}`, {
             fontSize: '18px',
             fontFamily: 'Arial Black',
-            color: '#38bdf8',
+            color: isPositive ? '#38bdf8' : '#f87171',
             stroke: '#000000',
             strokeThickness: 3
         }).setOrigin(0.5).setDepth(DEPTH.POPUP_FX);
@@ -706,8 +1040,12 @@ export class GameScene extends Phaser.Scene {
             }
         });
 
-        this.spawnSplash(playerPt.x, this.playerScreenY - 40, 0x22c55e, 25);
-        this.spawnSplash(playerPt.x, this.playerScreenY - 20, 0x38bdf8, 20);
+        if (isPositive) {
+            this.spawnSplash(playerPt.x, this.playerScreenY - 40, 0x22c55e, 25);
+            this.spawnSplash(playerPt.x, this.playerScreenY - 20, 0x38bdf8, 20);
+        } else {
+            this.spawnSplash(playerPt.x, this.playerScreenY - 40, 0xef4444, 25);
+        }
     }
 
     spawnSplash(x, y, color, count) {
@@ -746,13 +1084,19 @@ export class GameScene extends Phaser.Scene {
                 this.bubbleCountText.setText(`${this.crowdCount}`);
                 this.enemyBubbleText.setText(`${this.enemyArmyCount}`);
 
-                this.cameras.main.shake(60, 0.008);
                 this.spawnSplash(playerPt.x, this.playerScreenY - 40, 0xef4444, 4);
                 this.spawnSplash(playerPt.x, this.playerScreenY - 20, 0x0284c7, 4);
-                this.playSfx('sfx_click');
+
+                // Visually pop soldiers as count goes down
+                const targetSoldiers = Math.min(this.enemySoldiers.length, Math.ceil(this.enemyArmyCount * 35 / 55));
+                while (this.enemySoldiers.length > targetSoldiers && this.enemySoldiers.length > 0) {
+                    const s = this.enemySoldiers.pop();
+                    if (s && s.active) s.destroy();
+                }
 
                 if (this.crowdCount <= 0 || this.enemyArmyCount <= 0) {
                     this.battleTimer.remove();
+                    this.enemyArmyContainer.setVisible(false);
 
                     if (this.crowdCount > 0 && this.enemyArmyCount <= 0) {
                         this.finishBattle(true);
@@ -771,7 +1115,6 @@ export class GameScene extends Phaser.Scene {
         if (isVictory) {
             this.playSfx('sfx_complete');
             this.spawnSplash(this.centerX, this.playerScreenY - 40, 0xfacc15, 50);
-            this.cameras.main.shake(300, 0.02);
 
             if (this.castleBanner) {
                 this.castleBanner.setText('👑 CASTLE CONQUERED! 👑');
@@ -787,7 +1130,6 @@ export class GameScene extends Phaser.Scene {
             });
         } else {
             this.playSfx('sfx_gameover');
-            this.cameras.main.shake(300, 0.02);
         }
 
         this.time.delayedCall(600, () => {
