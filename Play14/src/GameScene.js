@@ -1,4 +1,23 @@
 import Phaser from 'phaser';
+import { generate3DRunnerFrames } from './assets/spritesheetGenerator.js';
+
+// Import sound assets for Vite bundling & single-file inlining
+import sfxClick from './assets/Sound/click.mp3';
+import sfxComplete from './assets/Sound/levelcomplete.mp3';
+import sfxGameover from './assets/Sound/gameover.mp3';
+
+// Explicit Z-Index Depth Architecture
+const DEPTH = {
+    BACKGROUND: 10,
+    ROAD: 20,
+    ROAD_BORDER: 30,
+    WORLD_BASE: 100, // World objects (gates, runners, enemies) get: WORLD_BASE + Math.floor(y * 10)
+    PLAYER_BUBBLE: 6000,
+    ENEMY_BUBBLE: 6100,
+    POPUP_FX: 8000,
+    HUD: 9000,
+    ENDCARD: 10000
+};
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -6,41 +25,50 @@ export class GameScene extends Phaser.Scene {
     }
 
     preload() {
-        // Load audio assets
+        // Load audio assets directly using imported asset URLs
         try {
-            this.load.audio('sfx_click', 'src/assets/Sound/click.mp3');
-            this.load.audio('sfx_complete', 'src/assets/Sound/levelcomplete.mp3');
-            this.load.audio('sfx_gameover', 'src/assets/Sound/gameover.mp3');
+            this.load.audio('sfx_click', sfxClick);
+            this.load.audio('sfx_complete', sfxComplete);
+            this.load.audio('sfx_gameover', sfxGameover);
         } catch (e) {
             console.warn('Audio preload fallback', e);
         }
+
+        // Confetti texture
+        let cGraphics = this.make.graphics({ x: 0, y: 0, add: false });
+        cGraphics.fillStyle(0xffffff, 1);
+        cGraphics.fillRect(0, 0, 10, 6);
+        cGraphics.generateTexture('confetti', 10, 6);
+
     }
 
     create() {
         this.w = this.scale.width;
         this.h = this.scale.height;
         this.centerX = this.w / 2;
-        this.roadWidth = Math.min(this.w * 0.85, 380);
-        this.roadLeft = this.centerX - this.roadWidth / 2;
-        this.roadRight = this.centerX + this.roadWidth / 2;
 
-        this.gameState = 'TUTORIAL'; // TUTORIAL, RUNNING, BOSS_FIGHT, ENDCARD
-        this.crowdCount = 1;
-        this.playerX = this.centerX;
-        this.targetPlayerX = this.centerX;
-        this.playerY = this.h * 0.76;
-        this.scrollSpeed = 260; // Pixels per second
+        // 3D Perspective Road Projection Coordinates
+        this.horizonY = 85;
+        this.bottomY = this.h + 20;
+        this.roadTopWidth = 165;
+        this.roadBottomWidth = Math.min(this.w * 0.98, 440);
+
+        this.gameState = 'TUTORIAL'; // TUTORIAL, RUNNING, BATTLE, ENDCARD
+        this.crowdCount = 1; // Starts with 1 single runner
+        this.enemyArmyCount = 120; // Final enemy army count to beat
+        this.playerLaneX = 0; // Normalized -1 to +1 relative to road center
+        this.targetLaneX = 0;
+        this.playerScreenY = this.h * 0.76;
+        this.scrollSpeed = 120; // Relaxed walking speed in pixels per second
         this.distanceTravelled = 0;
-        this.bossHp = 100;
-        this.maxBossHp = 100;
         this.isInteracted = false;
         this.hasTriggeredStore = false;
 
         this.generateTextures();
-        this.createBackgroundAndRoad();
+        this.createStadiumBackground();
+        this.createPerspectiveRoad();
         this.createTrackElements();
         this.createCrowd();
-        this.createBoss();
         this.createUI();
         this.setupInput();
 
@@ -49,13 +77,13 @@ export class GameScene extends Phaser.Scene {
             window.gameReady();
         }
 
-        // Auto-pilot if no touch after 3s to guarantee ad progression
+        // Auto-pilot if no touch after 3s
         this.autoPilotTimer = this.time.delayedCall(3000, () => {
             if (!this.isInteracted && this.gameState === 'TUTORIAL') {
                 this.startGame();
                 this.tweens.add({
                     targets: this,
-                    targetPlayerX: this.centerX - 80,
+                    targetLaneX: 0.5,
                     duration: 1000,
                     ease: 'Power2'
                 });
@@ -63,349 +91,402 @@ export class GameScene extends Phaser.Scene {
         });
     }
 
-    drawRoundRect(ctx, x, y, w, h, r) {
-        if (ctx.roundRect) {
-            ctx.roundRect(x, y, w, h, r);
-        } else {
-            ctx.beginPath();
-            ctx.moveTo(x + r, y);
-            ctx.lineTo(x + w - r, y);
-            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-            ctx.lineTo(x + w, y + h - r);
-            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-            ctx.lineTo(x + r, y + h);
-            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-            ctx.lineTo(x, y + r);
-            ctx.quadraticCurveTo(x, y, x + r, y);
-            ctx.closePath();
-        }
+    // Convert normalized Lane (-1 to 1 on PLAYABLE GREEN TURF ONLY) and Screen Y into Screen X
+    getRoadPoint(lane, screenY) {
+        const t = Phaser.Math.Clamp((screenY - this.horizonY) / (this.bottomY - this.horizonY), 0, 1);
+        const roadW = Phaser.Math.Linear(this.roadTopWidth, this.roadBottomWidth, t);
+        const scale = Phaser.Math.Linear(0.45, 1.0, t);
+
+        const tartanFraction = 0.20; // Left 20% is decorative red tartan track, 80% is playable green turf
+
+        const fullLeftX = this.centerX - roadW / 2;
+        const fullRightX = this.centerX + roadW / 2;
+        const dividerX = fullLeftX + roadW * tartanFraction;
+
+        // Playable Green Turf Track (80% width)
+        const turfLeftX = dividerX;
+        const turfRightX = fullRightX;
+        const turfWidth = turfRightX - turfLeftX;
+        const turfCenterX = (turfLeftX + turfRightX) / 2;
+
+        // Account for crowd horizontal spread radius so the entire mob stays strictly within the green turf
+        const crowdRadius = Math.min(52, (Math.sqrt(this.crowdCount) * 7.5 + 10) * scale);
+        const maxOffset = Math.max(10, (turfWidth / 2) - crowdRadius - 12);
+
+        const screenX = turfCenterX + (lane * maxOffset);
+        return { 
+            x: screenX, 
+            y: screenY, 
+            scale: scale, 
+            width: roadW, 
+            turfWidth: turfWidth,
+            turfCenterX: turfCenterX,
+            turfLeftX: turfLeftX,
+            turfRightX: turfRightX,
+            maxOffset: maxOffset, 
+            crowdRadius: crowdRadius 
+        };
     }
 
     generateTextures() {
-        // 1. Blue Runner Stickman Texture
-        if (!this.textures.exists('runner_blue')) {
+        // 1. Generate 3D Animated Runner Spritesheets (Blue and Red)
+        this.blueAnimKey = generate3DRunnerFrames(this, 'blue');
+        this.redAnimKey = generate3DRunnerFrames(this, 'red');
+
+        // 2. Blue Speech Bubble
+        if (!this.textures.exists('bubble_blue')) {
             const canvas = document.createElement('canvas');
-            canvas.width = 32;
-            canvas.height = 36;
+            canvas.width = 110;
+            canvas.height = 65;
             const ctx = canvas.getContext('2d');
 
-            // Shadow
-            ctx.fillStyle = 'rgba(0,0,0,0.25)';
-            ctx.beginPath();
-            ctx.ellipse(16, 33, 10, 3, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Body gradient (Bright Blue)
-            const grad = ctx.createLinearGradient(0, 0, 0, 32);
-            grad.addColorStop(0, '#00d4ff');
-            grad.addColorStop(1, '#0066ff');
-
-            // Head
-            ctx.fillStyle = '#ffffff';
-            ctx.beginPath();
-            ctx.arc(16, 9, 7, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            ctx.arc(16, 9, 6, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Body
-            ctx.fillStyle = grad;
-            ctx.beginPath();
-            this.drawRoundRect(ctx, 11, 15, 10, 14, 4);
-            ctx.fill();
-
-            // Headband / Eyes glow
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(13, 7, 6, 2);
-
-            this.textures.addCanvas('runner_blue', canvas);
-        }
-
-        // 2. Red Giant Boss Texture
-        if (!this.textures.exists('boss_red')) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 96;
-            canvas.height = 110;
-            const ctx = canvas.getContext('2d');
-
-            // Shadow
-            ctx.fillStyle = 'rgba(0,0,0,0.35)';
-            ctx.beginPath();
-            ctx.ellipse(48, 102, 34, 8, 0, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Red fiery gradient
-            const bGrad = ctx.createLinearGradient(0, 0, 0, 100);
-            bGrad.addColorStop(0, '#ff4757');
-            bGrad.addColorStop(1, '#9b0000');
-
-            // Horns
-            ctx.fillStyle = '#ffa502';
-            ctx.beginPath();
-            ctx.moveTo(30, 26);
-            ctx.lineTo(16, 8);
-            ctx.lineTo(36, 18);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.moveTo(66, 26);
-            ctx.lineTo(80, 8);
-            ctx.lineTo(60, 18);
-            ctx.fill();
-
-            // Head
-            ctx.fillStyle = bGrad;
-            ctx.beginPath();
-            ctx.arc(48, 32, 22, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.lineWidth = 3;
-            ctx.strokeStyle = '#2f3542';
-            ctx.stroke();
-
-            // Evil Eyes
-            ctx.fillStyle = '#ffa502';
-            ctx.beginPath();
-            ctx.arc(40, 28, 5, 0, Math.PI * 2);
-            ctx.arc(56, 28, 5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.fillStyle = '#000000';
-            ctx.beginPath();
-            ctx.arc(40, 28, 2, 0, Math.PI * 2);
-            ctx.arc(56, 28, 2, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Big muscular body
-            ctx.fillStyle = bGrad;
-            ctx.beginPath();
-            this.drawRoundRect(ctx, 24, 50, 48, 48, 12);
-            ctx.fill();
-            ctx.stroke();
-
-            // Spiked Shoulders
-            ctx.fillStyle = '#2f3542';
-            ctx.beginPath();
-            ctx.arc(20, 56, 10, 0, Math.PI * 2);
-            ctx.arc(76, 56, 10, 0, Math.PI * 2);
-            ctx.fill();
-
-            this.textures.addCanvas('boss_red', canvas);
-        }
-
-        // 3. Saw / Blade Hazard Texture
-        if (!this.textures.exists('saw_blade')) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 48;
-            canvas.height = 48;
-            const ctx = canvas.getContext('2d');
-
-            ctx.fillStyle = '#747d8c';
-            ctx.beginPath();
-            ctx.arc(24, 24, 20, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = '#ff4757';
-            ctx.beginPath();
-            ctx.arc(24, 24, 10, 0, Math.PI * 2);
-            ctx.fill();
-
+            ctx.fillStyle = '#0284c7';
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 2;
-            for (let i = 0; i < 8; i++) {
-                const angle = (i * Math.PI) / 4;
-                ctx.beginPath();
-                ctx.moveTo(24, 24);
-                ctx.lineTo(24 + Math.cos(angle) * 22, 24 + Math.sin(angle) * 22);
-                ctx.stroke();
-            }
-
-            this.textures.addCanvas('saw_blade', canvas);
-        }
-
-        // 4. Particle star
-        if (!this.textures.exists('star_particle')) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 16;
-            canvas.height = 16;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = '#ffeaa7';
+            ctx.lineWidth = 3.5;
             ctx.beginPath();
-            ctx.arc(8, 8, 7, 0, Math.PI * 2);
+            ctx.roundRect ? ctx.roundRect(6, 6, 98, 42, 20) : ctx.fillRect(6, 6, 98, 42);
             ctx.fill();
-            this.textures.addCanvas('star_particle', canvas);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(46, 47);
+            ctx.lineTo(55, 60);
+            ctx.lineTo(64, 47);
+            ctx.fillStyle = '#0284c7';
+            ctx.fill();
+            ctx.stroke();
+
+            this.textures.addCanvas('bubble_blue', canvas);
+        }
+
+        // 3. Red Speech Bubble
+        if (!this.textures.exists('bubble_red')) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 110;
+            canvas.height = 65;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#ef4444';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(6, 6, 98, 42, 20) : ctx.fillRect(6, 6, 98, 42);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(46, 47);
+            ctx.lineTo(55, 60);
+            ctx.lineTo(64, 47);
+            ctx.fillStyle = '#ef4444';
+            ctx.fill();
+            ctx.stroke();
+
+            this.textures.addCanvas('bubble_red', canvas);
         }
     }
 
-    createBackgroundAndRoad() {
-        // Dynamic futuristic gradient background
-        this.bgGraphics = this.add.graphics();
-        this.bgGraphics.fillGradientStyle(0x0f172a, 0x0f172a, 0x1e293b, 0x1e293b, 1);
-        this.bgGraphics.fillRect(0, 0, this.w, this.h);
+    createStadiumBackground() {
+        // Clean Warm Sandy Stadium Ground Environment matching reference image
+        const bg = this.add.graphics().setDepth(DEPTH.BACKGROUND);
+        bg.fillStyle(0xede4cd, 1);
+        bg.fillRect(0, 0, this.w, this.h);
 
-        // Road Surface Container
-        this.roadGraphics = this.add.graphics();
-        this.drawRoad();
-
-        // Animated Speed lines / Grid on road
-        this.roadStripes = [];
-        for (let i = 0; i < 14; i++) {
-            const stripe = this.add.rectangle(
-                this.centerX,
-                i * 70,
-                this.roadWidth * 0.9,
-                4,
-                0xffffff,
-                0.08
-            );
-            this.roadStripes.push(stripe);
-        }
+        // Soft sky atmosphere above the track horizon
+        const sky = this.add.graphics().setDepth(DEPTH.BACKGROUND + 1);
+        sky.fillGradientStyle(0xd4e7f8, 0xd4e7f8, 0xede4cd, 0xede4cd, 1, 1, 1, 1);
+        sky.fillRect(0, 0, this.w, this.horizonY + 30);
     }
 
-    drawRoad() {
+    createPerspectiveRoad() {
+        this.roadGraphics = this.add.graphics().setDepth(DEPTH.ROAD);
+        this.trackScrollProgress = 0;
+        this.stripeCount = 10;
+        this.fenceCount = 12;
+    }
+
+    draw3DPerspectiveRoad() {
         this.roadGraphics.clear();
 
-        // Outer Glow / Road Border
-        this.roadGraphics.lineStyle(6, 0x38bdf8, 0.6);
-        this.roadGraphics.strokeRoundedRect(this.roadLeft - 2, -50, this.roadWidth + 4, this.h + 100, 16);
+        const tartanFraction = 0.20; // 20% left side is red athletic running track, 80% right side is green turf
 
-        // Road Bed
-        this.roadGraphics.fillStyle(0x1e1b4b, 0.95);
-        this.roadGraphics.fillRoundedRect(this.roadLeft, -50, this.roadWidth, this.h + 100, 14);
+        const topLeft = this.centerX - this.roadTopWidth / 2;
+        const topRight = this.centerX + this.roadTopWidth / 2;
+        const botLeft = this.centerX - this.roadBottomWidth / 2;
+        const botRight = this.centerX + this.roadBottomWidth / 2;
 
-        // Lane divider (dashed)
-        this.roadGraphics.lineStyle(2, 0x6366f1, 0.25);
-        this.roadGraphics.lineBetween(this.centerX, 0, this.centerX, this.h);
+        const topTartan = topLeft + this.roadTopWidth * tartanFraction;
+        const botTartan = botLeft + this.roadBottomWidth * tartanFraction;
+
+        // 1. Right Side Green Turf Alternating Horizontal Stripes
+        const numStripes = this.stripeCount;
+        for (let i = 0; i < numStripes * 2; i++) {
+            const pStart = ((this.trackScrollProgress + i / numStripes) % 2) / 2;
+            const pEnd = pStart + 1 / (numStripes * 2);
+
+            if (pStart >= 1) continue;
+            const clampedPStart = Math.max(0, pStart);
+            const clampedPEnd = Math.min(1, pEnd);
+            if (clampedPEnd <= clampedPStart) continue;
+
+            const y0 = Phaser.Math.Linear(this.horizonY, this.bottomY, clampedPStart);
+            const y1 = Phaser.Math.Linear(this.horizonY, this.bottomY, clampedPEnd);
+            const w0 = Phaser.Math.Linear(this.roadTopWidth, this.roadBottomWidth, clampedPStart);
+            const w1 = Phaser.Math.Linear(this.roadTopWidth, this.roadBottomWidth, clampedPEnd);
+
+            const tx0 = this.centerX - w0 / 2 + w0 * tartanFraction;
+            const rx0 = this.centerX + w0 / 2;
+            const tx1 = this.centerX - w1 / 2 + w1 * tartanFraction;
+            const rx1 = this.centerX + w1 / 2;
+
+            const isDark = (i % 2 === 0);
+            this.roadGraphics.fillStyle(isDark ? 0x5ea364 : 0xade6a2, 1);
+            this.roadGraphics.beginPath();
+            this.roadGraphics.moveTo(tx0, y0);
+            this.roadGraphics.lineTo(rx0, y0);
+            this.roadGraphics.lineTo(rx1, y1);
+            this.roadGraphics.lineTo(tx1, y1);
+            this.roadGraphics.closePath();
+            this.roadGraphics.fill();
+        }
+
+        // 2. Left Side Red Tartan Athletic Running Track
+        this.roadGraphics.fillStyle(0xd9534f, 1);
+        this.roadGraphics.beginPath();
+        this.roadGraphics.moveTo(topLeft, this.horizonY);
+        this.roadGraphics.lineTo(topTartan, this.horizonY);
+        this.roadGraphics.lineTo(botTartan, this.bottomY);
+        this.roadGraphics.lineTo(botLeft, this.bottomY);
+        this.roadGraphics.closePath();
+        this.roadGraphics.fill();
+
+        // 2 Thin White Lane Lines inside the Red Tartan Track
+        this.roadGraphics.lineStyle(2, 0xffffff, 0.95);
+        const topLane1 = topLeft + this.roadTopWidth * tartanFraction * 0.33;
+        const botLane1 = botLeft + this.roadBottomWidth * tartanFraction * 0.33;
+        const topLane2 = topLeft + this.roadTopWidth * tartanFraction * 0.66;
+        const botLane2 = botLeft + this.roadBottomWidth * tartanFraction * 0.66;
+        this.roadGraphics.lineBetween(topLane1, this.horizonY, botLane1, this.bottomY);
+        this.roadGraphics.lineBetween(topLane2, this.horizonY, botLane2, this.bottomY);
+
+        // 3. Right Outer Dark Green Border Strip
+        const topCurb = topRight - 8;
+        const botCurb = botRight - 16;
+        this.roadGraphics.fillStyle(0x356d39, 1);
+        this.roadGraphics.beginPath();
+        this.roadGraphics.moveTo(topCurb, this.horizonY);
+        this.roadGraphics.lineTo(topRight, this.horizonY);
+        this.roadGraphics.lineTo(botRight, this.bottomY);
+        this.roadGraphics.lineTo(botCurb, this.bottomY);
+        this.roadGraphics.closePath();
+        this.roadGraphics.fill();
+
+        // 4. White Perspective Divider Lines
+        this.roadGraphics.lineStyle(3, 0xffffff, 1);
+        this.roadGraphics.lineBetween(topLeft, this.horizonY, botLeft, this.bottomY); // Left boundary
+        this.roadGraphics.lineBetween(topTartan, this.horizonY, botTartan, this.bottomY); // Track divider
+        this.roadGraphics.lineBetween(topRight, this.horizonY, botRight, this.bottomY); // Right boundary
+
+        // 5. Perspective Stadium Fence Posts & Rails along borders
+        const numPosts = this.fenceCount;
+        for (let j = 0; j <= numPosts; j++) {
+            const p = ((this.trackScrollProgress * 0.5 + j / numPosts) % 1);
+            const y = Phaser.Math.Linear(this.horizonY, this.bottomY, p);
+            const w = Phaser.Math.Linear(this.roadTopWidth, this.roadBottomWidth, p);
+            const postH = Phaser.Math.Linear(12, 34, p);
+
+            const lx = this.centerX - w / 2;
+            const mx = lx + w * tartanFraction;
+            const rx = this.centerX + w / 2;
+
+            // White Posts
+            this.roadGraphics.lineStyle(Phaser.Math.Linear(1.5, 3.5, p), 0xffffff, 0.95);
+            this.roadGraphics.lineBetween(lx - 2, y, lx - 2, y - postH);
+            this.roadGraphics.lineBetween(mx, y, mx, y - postH * 0.85);
+            this.roadGraphics.lineBetween(rx + 2, y, rx + 2, y - postH);
+
+            // Ball tops
+            this.roadGraphics.fillStyle(0xffffff, 1);
+            const ballR = Phaser.Math.Linear(2, 4.5, p);
+            this.roadGraphics.fillCircle(lx - 2, y - postH, ballR);
+            this.roadGraphics.fillCircle(mx, y - postH * 0.85, ballR * 0.8);
+            this.roadGraphics.fillCircle(rx + 2, y - postH, ballR);
+        }
     }
 
     createTrackElements() {
-        // Track layout along virtual Y coordinates (distance)
-        // Gate Set 1: Choice between (+20) and (-10)
-        this.gateSet1 = {
-            y: -380,
-            passed: false,
-            left: { x: this.centerX - this.roadWidth * 0.25, type: 'ADD', val: 20, color: 0x10b981, label: '+20' },
-            right: { x: this.centerX + this.roadWidth * 0.25, type: 'SUB', val: -10, color: 0xef4444, label: '-10' }
-        };
+        // 4 Gate Sets spaced across extended track length
+        this.gates = [
+            {
+                distance: 480,
+                passed: false,
+                left: { type: '+', val: 10, label: '+10', color: 0x0284c7 },
+                right: { type: '+', val: 25, label: '+25', color: 0x10b981 },
+                container: this.add.container(0, 0)
+            },
+            {
+                distance: 1040,
+                passed: false,
+                left: { type: 'x', val: 2, label: 'x2', color: 0xf59e0b },
+                right: { type: '+', val: 15, label: '+15', color: 0x0284c7 },
+                container: this.add.container(0, 0)
+            },
+            {
+                distance: 1600,
+                passed: false,
+                left: { type: '+', val: 40, label: '+40', color: 0x0284c7 },
+                right: { type: 'x', val: 3, label: 'x3', color: 0x10b981 },
+                container: this.add.container(0, 0)
+            },
+            {
+                distance: 2160,
+                passed: false,
+                left: { type: 'x', val: 2, label: 'x2', color: 0x0284c7 },
+                right: { type: 'x', val: 4, label: 'x4', color: 0xf59e0b },
+                container: this.add.container(0, 0)
+            }
+        ];
 
-        // Mid Hazard Saw
-        this.sawHazard = {
-            y: -850,
-            x: this.centerX,
-            sprite: this.add.sprite(this.centerX, -850, 'saw_blade').setScale(1.2)
-        };
+        this.gates.forEach(g => {
+            this.buildGate3D(g);
+            g.container.setVisible(false);
+        });
 
-        // Gate Set 2: Choice between (x5 Multiplier) and (+10)
-        this.gateSet2 = {
-            y: -1300,
-            passed: false,
-            left: { x: this.centerX - this.roadWidth * 0.25, type: 'MULT', val: 5, color: 0xf59e0b, label: 'x5' },
-            right: { x: this.centerX + this.roadWidth * 0.25, type: 'ADD', val: 10, color: 0x3b82f6, label: '+10' }
-        };
+        // ==========================================
+        // FINISH DESTINATION: RED MOB ARMY BATTLE
+        // ==========================================
+        this.finishDistance = 2680;
 
-        // Finish Line
-        this.finishLineY = -1800;
-        this.finishLineGraphic = this.add.graphics();
-        this.drawFinishLine();
+        // Red Army Mob waiting at the finish line
+        this.enemyArmyContainer = this.add.container(this.centerX, -200);
+        this.enemyArmyContainer.setVisible(false);
 
-        // Visual Gate GameObjects
-        this.gateContainers = [];
-        this.gateContainers.push(this.buildGateVisual(this.gateSet1.left, this.gateSet1.y));
-        this.gateContainers.push(this.buildGateVisual(this.gateSet1.right, this.gateSet1.y));
-        this.gateContainers.push(this.buildGateVisual(this.gateSet2.left, this.gateSet2.y));
-        this.gateContainers.push(this.buildGateVisual(this.gateSet2.right, this.gateSet2.y));
+        this.enemyBubble = this.add.container(0, -60);
+        const redBubbleBg = this.add.sprite(0, 0, 'bubble_red').setScale(0.95);
+        this.enemyBubbleText = this.add.text(0, -6, `${this.enemyArmyCount}`, {
+            fontSize: '24px',
+            fontFamily: 'Arial Black',
+            color: '#ffffff'
+        }).setOrigin(0.5);
+        this.enemyBubble.add([redBubbleBg, this.enemyBubbleText]);
+        this.enemyBubble.setDepth(DEPTH.ENEMY_BUBBLE);
+
+        this.enemySoldiers = [];
+        for (let i = 0; i < 35; i++) {
+            const r = this.add.sprite(0, 0, 'red_run_0').setScale(0.85);
+            r.play('red_runner_run');
+            r.anims.setProgress(Math.random());
+
+            const col = (i % 7) - 3;
+            const row = Math.floor(i / 7);
+            r.gridX = col * 17;
+            r.gridY = row * 15;
+            r.x = r.gridX;
+            r.y = r.gridY;
+            r.setDepth(row * 2);
+            this.enemySoldiers.push(r);
+            this.enemyArmyContainer.add(r);
+        }
+        this.enemyArmyContainer.add(this.enemyBubble);
     }
 
-    buildGateVisual(gateData, initialY) {
-        const container = this.add.container(gateData.x, initialY);
-        const w = this.roadWidth * 0.44;
-        const h = 75;
-
-        // Gate frame glow
+    buildGate3D(gate) {
         const bg = this.add.graphics();
-        bg.fillStyle(gateData.color, 0.25);
-        bg.fillRoundedRect(-w / 2, -h / 2, w, h, 12);
-        bg.lineStyle(3, gateData.color, 0.9);
-        bg.strokeRoundedRect(-w / 2, -h / 2, w, h, 12);
+        gate.graphics = bg;
 
-        // Top Light Bar
-        const bar = this.add.rectangle(0, -h / 2 + 4, w - 8, 4, 0xffffff, 0.8);
+        const leftPost = this.add.rectangle(-80, 0, 10, 48, 0xbae6fd).setStrokeStyle(2, 0xffffff);
+        const midPost = this.add.rectangle(0, 0, 10, 48, 0xbae6fd).setStrokeStyle(2, 0xffffff);
+        const rightPost = this.add.rectangle(80, 0, 10, 48, 0xbae6fd).setStrokeStyle(2, 0xffffff);
 
-        // Text
-        const text = this.add.text(0, 0, gateData.label, {
-            fontSize: '30px',
-            fontFamily: 'Arial Black, Impact, sans-serif',
+        const leftText = this.add.text(-40, 0, gate.left.label, {
+            fontSize: '32px',
+            fontFamily: 'Arial Black, Impact',
             color: '#ffffff',
-            stroke: '#000000',
+            stroke: '#0284c7',
             strokeThickness: 5
         }).setOrigin(0.5);
 
-        // Subtitle tag
-        const sub = this.add.text(0, h / 2 - 12, gateData.type === 'MULT' ? 'SUPER' : 'CROWD', {
-            fontSize: '11px',
-            fontFamily: 'Arial, sans-serif',
+        const rightText = this.add.text(40, 0, gate.right.label, {
+            fontSize: '32px',
+            fontFamily: 'Arial Black, Impact',
             color: '#ffffff',
-            fontStyle: 'bold'
+            stroke: '#0284c7',
+            strokeThickness: 5
         }).setOrigin(0.5);
 
-        container.add([bg, bar, text, sub]);
-        container.gateData = gateData;
-        return container;
+        gate.leftPost = leftPost;
+        gate.midPost = midPost;
+        gate.rightPost = rightPost;
+        gate.leftText = leftText;
+        gate.rightText = rightText;
+
+        gate.container.add([bg, leftPost, midPost, rightPost, leftText, rightText]);
     }
 
-    drawFinishLine() {
-        this.finishLineGraphic.clear();
-        const flY = this.finishLineY + this.distanceTravelled;
-        const w = this.roadWidth;
-        const h = 24;
-        const sq = 12;
+    updateGate3D(gate, screenY) {
+        const t = Phaser.Math.Clamp((screenY - this.horizonY) / (this.bottomY - this.horizonY), 0, 1);
+        const roadW = Phaser.Math.Linear(this.roadTopWidth, this.roadBottomWidth, t);
+        const scale = Phaser.Math.Linear(0.45, 1.0, t);
 
-        // Checkered pattern
-        for (let x = 0; x < w; x += sq) {
-            const isWhite = (Math.floor(x / sq)) % 2 === 0;
-            this.finishLineGraphic.fillStyle(isWhite ? 0xffffff : 0x000000, 0.9);
-            this.finishLineGraphic.fillRect(this.roadLeft + x, flY, sq, h);
-        }
+        const tartanFraction = 0.20;
+        const fullLeftX = this.centerX - roadW / 2;
+        const dividerX = fullLeftX + roadW * tartanFraction;
+        const fullRightX = this.centerX + roadW / 2;
+        const turfWidth = fullRightX - dividerX;
+        const turfCenterX = (dividerX + fullRightX) / 2;
 
-        // Finish text banner
-        this.finishBanner = this.add.text(this.centerX, flY - 20, '🏁 FINISH BATTLE 🏁', {
-            fontSize: '16px',
-            fontFamily: 'Arial Black',
-            color: '#facc15',
-            stroke: '#000000',
-            strokeThickness: 4
-        }).setOrigin(0.5);
+        const alpha = Phaser.Math.Clamp((screenY - this.horizonY) / 60, 0, 1);
+        gate.container.setAlpha(alpha);
+
+        gate.container.x = turfCenterX;
+        gate.container.y = screenY;
+        gate.container.setScale(scale);
+        gate.container.setDepth(DEPTH.WORLD_BASE + Math.floor(screenY * 10));
+
+        const halfW = turfWidth / 2 / scale;
+        gate.leftPost.x = -halfW;
+        gate.rightPost.x = halfW;
+        gate.midPost.x = 0;
+
+        gate.leftText.x = -halfW * 0.5;
+        gate.rightText.x = halfW * 0.5;
+
+        gate.graphics.clear();
+        gate.graphics.fillStyle(gate.left.color, 0.45);
+        gate.graphics.fillRect(-halfW, -24, halfW, 48);
+        gate.graphics.lineStyle(3, 0xffffff, 0.95);
+        gate.graphics.strokeRect(-halfW, -24, halfW, 48);
+
+        gate.graphics.fillStyle(gate.right.color, 0.45);
+        gate.graphics.fillRect(0, -24, halfW, 48);
+        gate.graphics.strokeRect(0, -24, halfW, 48);
     }
 
     createCrowd() {
-        this.crowdContainer = this.add.container(0, 0);
         this.runners = [];
         this.updateCrowdVisuals();
 
-        // Crowd counter floating pill
-        this.countBadge = this.add.container(this.playerX, this.playerY - 45);
-        const bg = this.add.graphics();
-        bg.fillStyle(0x000000, 0.7);
-        bg.fillRoundedRect(-32, -14, 64, 28, 14);
-        bg.lineStyle(2, 0x38bdf8, 1);
-        bg.strokeRoundedRect(-32, -14, 64, 28, 14);
-
-        this.countText = this.add.text(0, 0, `👥 ${this.crowdCount}`, {
-            fontSize: '15px',
+        this.playerBubble = this.add.container(this.centerX, this.playerScreenY - 60);
+        const bubbleBg = this.add.sprite(0, 0, 'bubble_blue').setScale(0.85);
+        this.bubbleCountText = this.add.text(0, -6, `${this.crowdCount}`, {
+            fontSize: '22px',
             fontFamily: 'Arial Black',
             color: '#ffffff'
         }).setOrigin(0.5);
 
-        this.countBadge.add([bg, this.countText]);
+        this.playerBubble.add([bubbleBg, this.bubbleCountText]);
+        this.playerBubble.setDepth(DEPTH.PLAYER_BUBBLE);
     }
 
     updateCrowdVisuals() {
-        // Manage pool of runner sprites
-        const targetVisible = Math.min(this.crowdCount, 45); // Max visual sprites for optimal FPS
+        const targetVisible = Math.min(this.crowdCount, 45);
 
         while (this.runners.length < targetVisible) {
-            const r = this.add.sprite(this.playerX, this.playerY, 'runner_blue');
+            const r = this.add.sprite(this.centerX, this.playerScreenY, 'blue_run_0');
             r.setScale(0.95);
-            this.crowdContainer.add(r);
+            r.play('blue_runner_run');
+            r.anims.setProgress(Math.random());
+            r.setDepth(DEPTH.WORLD_BASE + Math.floor(this.playerScreenY * 10));
             this.runners.push(r);
         }
 
@@ -414,121 +495,46 @@ export class GameScene extends Phaser.Scene {
             r.destroy();
         }
 
-        // Layout runners in organic flock / cone around central player pos
         for (let i = 0; i < this.runners.length; i++) {
             const r = this.runners[i];
             if (i === 0) {
                 r.offsetX = 0;
                 r.offsetY = 0;
             } else {
-                // Golden spiral / circle distribution
-                const radius = Math.sqrt(i) * 9;
-                const angle = i * 2.39996; // Golden angle
-                r.offsetX = Math.cos(angle) * radius * 1.4;
-                r.offsetY = Math.sin(angle) * radius * 0.8;
+                const radius = Math.sqrt(i) * 11;
+                const angle = i * 2.39996;
+                r.offsetX = Math.cos(angle) * radius * 1.35;
+                r.offsetY = Math.sin(angle) * radius * 0.75;
             }
         }
     }
 
-    createBoss() {
-        this.bossContainer = this.add.container(this.centerX, this.finishLineY - 140);
-        this.bossSprite = this.add.sprite(0, 0, 'boss_red').setScale(1.4);
-
-        // Boss HP Bar
-        this.bossHpBg = this.add.graphics();
-        this.bossHpFill = this.add.graphics();
-        this.bossNameText = this.add.text(0, -90, '👹 TITAN DESTROYER', {
-            fontSize: '14px',
-            fontFamily: 'Arial Black',
-            color: '#ff4757',
-            stroke: '#000000',
-            strokeThickness: 3
-        }).setOrigin(0.5);
-
-        this.bossHpText = this.add.text(0, -68, `${this.bossHp}/${this.maxBossHp}`, {
-            fontSize: '12px',
+    createUI() {
+        this.dragPrompt = this.add.text(this.centerX + 35, this.playerScreenY - 110, 'SWIPE TO MULTIPLY SQUAD!', {
+            fontSize: '15px',
             fontFamily: 'Arial Black',
             color: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 2
-        }).setOrigin(0.5);
+            stroke: '#0284c7',
+            strokeThickness: 4
+        }).setOrigin(0.5).setDepth(DEPTH.HUD);
 
-        this.bossContainer.add([this.bossSprite, this.bossHpBg, this.bossHpFill, this.bossNameText, this.bossHpText]);
-        this.updateBossHpBar();
-    }
-
-    updateBossHpBar() {
-        const w = 120;
-        const h = 14;
-        const pct = Math.max(0, this.bossHp / this.maxBossHp);
-
-        this.bossHpBg.clear();
-        this.bossHpBg.fillStyle(0x000000, 0.7);
-        this.bossHpBg.fillRoundedRect(-w / 2, -75, w, h, 6);
-        this.bossHpBg.lineStyle(1.5, 0xffffff, 0.8);
-        this.bossHpBg.strokeRoundedRect(-w / 2, -75, w, h, 6);
-
-        this.bossHpFill.clear();
-        this.bossHpFill.fillStyle(0xef4444, 1);
-        this.bossHpFill.fillRoundedRect(-w / 2 + 1, -74, Math.max(0, (w - 2) * pct), h - 2, 5);
-
-        this.bossHpText.setText(`HP: ${Math.max(0, Math.floor(this.bossHp))}`);
-    }
-
-    createUI() {
-        // 1. Top Header
-        this.topBanner = this.add.container(this.centerX, 45);
-        const topBg = this.add.graphics();
-        topBg.fillStyle(0x000000, 0.65);
-        topBg.fillRoundedRect(-140, -22, 280, 44, 22);
-        topBg.lineStyle(2, 0x38bdf8, 0.8);
-        topBg.strokeRoundedRect(-140, -22, 280, 44, 22);
-
-        this.topTitle = this.add.text(0, 0, '⚡ RUN & MULTIPLY! ⚡', {
-            fontSize: '17px',
-            fontFamily: 'Arial Black',
-            color: '#38bdf8'
-        }).setOrigin(0.5);
-        this.topBanner.add([topBg, this.topTitle]);
-
-        // 2. Tutorial Hand & Prompt
-        this.tutorialGroup = this.add.container(this.centerX, this.playerY - 70);
-        this.handPointer = this.add.text(0, 0, '👉', { fontSize: '42px' }).setOrigin(0.5);
-
-        this.dragPrompt = this.add.text(0, 48, 'SWIPE TO DODGE & MULTIPLY!', {
-            fontSize: '14px',
-            fontFamily: 'Arial Black',
-            color: '#facc15',
-            stroke: '#000000',
-            strokeThickness: 3
-        }).setOrigin(0.5);
-
-        this.tutorialGroup.add([this.handPointer, this.dragPrompt]);
-
-        // Hand oscillation animation
         this.tweens.add({
-            targets: this.handPointer,
-            x: 55,
-            duration: 700,
+            targets: this.dragPrompt,
+            scale: 1.1,
+            duration: 600,
             yoyo: true,
-            repeat: -1,
-            ease: 'Sine.easeInOut'
+            repeat: -1
         });
     }
 
     setupInput() {
-        this.input.on('pointerdown', (pointer) => {
-            this.handleUserInteraction(pointer);
-        });
-
-        this.input.on('pointermove', (pointer) => {
-            if (pointer.isDown) {
-                this.handleUserInteraction(pointer);
-            }
+        this.input.on('pointerdown', (p) => this.handlePointer(p));
+        this.input.on('pointermove', (p) => {
+            if (p.isDown) this.handlePointer(p);
         });
     }
 
-    handleUserInteraction(pointer) {
+    handlePointer(p) {
         if (this.gameState === 'ENDCARD') {
             this.ShowStore();
             return;
@@ -538,13 +544,9 @@ export class GameScene extends Phaser.Scene {
             this.startGame();
         }
 
-        // Clamp player target within road boundaries
-        const margin = 28;
-        this.targetPlayerX = Phaser.Math.Clamp(
-            pointer.x,
-            this.roadLeft + margin,
-            this.roadRight - margin
-        );
+        const playerCenterPt = this.getRoadPoint(0, this.playerScreenY);
+        const halfTurfW = (playerCenterPt.turfWidth / 2) - 16;
+        this.targetLaneX = Phaser.Math.Clamp((p.x - playerCenterPt.turfCenterX) / halfTurfW, -1, 1);
     }
 
     startGame() {
@@ -555,12 +557,11 @@ export class GameScene extends Phaser.Scene {
             window.gameStart();
         }
 
-        // Fade out tutorial prompt
         this.tweens.add({
-            targets: this.tutorialGroup,
+            targets: this.dragPrompt,
             alpha: 0,
             duration: 300,
-            onComplete: () => this.tutorialGroup.setVisible(false)
+            onComplete: () => this.dragPrompt.setVisible(false)
         });
 
         this.playSfx('sfx_click');
@@ -571,220 +572,234 @@ export class GameScene extends Phaser.Scene {
             if (this.sound && this.sound.play) {
                 this.sound.play(key, { volume: 0.6 });
             }
-        } catch (e) {
-            // Audio context fallback
-        }
+        } catch (e) { }
     }
 
     update(time, delta) {
         const dt = delta / 1000;
 
-        // Animate Road Stripes for high speed sensation
-        if (this.gameState === 'RUNNING' || this.gameState === 'TUTORIAL') {
-            const stripeSpeed = this.gameState === 'RUNNING' ? this.scrollSpeed : 40;
-            this.roadStripes.forEach(st => {
-                st.y += stripeSpeed * dt;
-                if (st.y > this.h) {
-                    st.y -= (14 * 70);
-                }
-            });
-        }
+        // 1. Scroll 3D Perspective Athletic Track Stripes & Fences
+        const scrollDelta = this.gameState === 'RUNNING' ? 0.35 : 0.08;
+        this.trackScrollProgress += scrollDelta * dt;
+        if (this.trackScrollProgress > 1) this.trackScrollProgress -= 1;
+        this.draw3DPerspectiveRoad();
 
-        // Smooth horizontal player tracking
-        this.playerX = Phaser.Math.Linear(this.playerX, this.targetPlayerX, 0.18);
+        // 2. Smooth Player Movement
+        this.playerLaneX = Phaser.Math.Linear(this.playerLaneX, this.targetLaneX, 0.2);
+        const playerPt = this.getRoadPoint(this.playerLaneX, this.playerScreenY);
 
-        // Update Runner Positions & Bounce Animation
-        const bounce = Math.sin(time * 0.018) * 3;
+        // Update Crowd Visual Positions & Strict Clamping within green turf borders
+        const turfLeftEdge = playerPt.turfLeftX + 14;
+        const turfRightEdge = playerPt.turfRightX - 14;
+
         for (let i = 0; i < this.runners.length; i++) {
             const r = this.runners[i];
-            r.x = this.playerX + r.offsetX;
-            r.y = this.playerY + r.offsetY + bounce;
-            r.setDepth(10 + Math.floor(r.y));
+            const desiredX = playerPt.x + r.offsetX * playerPt.scale;
+            r.x = Phaser.Math.Clamp(desiredX, turfLeftEdge, turfRightEdge);
+            r.y = playerPt.y + r.offsetY * playerPt.scale;
+            r.setScale(0.95 * playerPt.scale);
+            r.setDepth(DEPTH.WORLD_BASE + Math.floor(r.y * 10));
         }
 
-        // Update Count Badge position
-        this.countBadge.x = this.playerX;
-        this.countBadge.y = this.playerY - 45 - Math.sqrt(this.crowdCount) * 2;
-        this.countBadge.setDepth(500);
+        this.playerBubble.x = Phaser.Math.Clamp(playerPt.x, turfLeftEdge + 18, turfRightEdge - 18);
+        this.playerBubble.y = playerPt.y - 65 * playerPt.scale;
+        this.playerBubble.setScale(playerPt.scale);
+        this.playerBubble.setDepth(DEPTH.PLAYER_BUBBLE);
 
-        // Track Progression during RUNNING state
+        // 3. Track Progression during RUNNING state
         if (this.gameState === 'RUNNING') {
             this.distanceTravelled += this.scrollSpeed * dt;
 
-            // Rotate saw blade
-            if (this.sawHazard.sprite) {
-                this.sawHazard.sprite.angle += 360 * dt * 2;
-                this.sawHazard.sprite.y = this.sawHazard.y + this.distanceTravelled;
-            }
+            // Update All 4 Gates
+            this.gates.forEach(gate => {
+                const gateScreenY = this.playerScreenY - (gate.distance - this.distanceTravelled);
+                if (gateScreenY >= this.horizonY && gateScreenY <= this.bottomY + 80) {
+                    gate.container.setVisible(true);
+                    this.updateGate3D(gate, gateScreenY);
 
-            // Update Gates Position
-            this.gateContainers.forEach(gc => {
-                gc.y = gc.gateData === this.gateSet1.left || gc.gateData === this.gateSet1.right ?
-                    this.gateSet1.y + this.distanceTravelled :
-                    this.gateSet2.y + this.distanceTravelled;
+                    if (!gate.passed && gateScreenY >= this.playerScreenY - 20) {
+                        gate.passed = true;
+                        const chosenSide = this.playerLaneX < 0 ? gate.left : gate.right;
+                        this.applyGateEffect(chosenSide, gateScreenY);
+                    }
+                } else {
+                    gate.container.setVisible(false);
+                }
             });
 
-            // Update Finish Line & Boss
-            const currFinishY = this.finishLineY + this.distanceTravelled;
-            this.finishLineGraphic.y = this.distanceTravelled;
-            if (this.finishBanner) {
-                this.finishBanner.y = this.finishLineY + this.distanceTravelled - 20;
-            }
-            this.bossContainer.y = currFinishY - 140;
+            // Enemy Army emerges at the finish distance
+            const finishDistFromPlayer = this.finishDistance - this.distanceTravelled;
+            const enemyScreenY = this.playerScreenY - finishDistFromPlayer;
 
-            // Check Gate 1 Collision
-            if (!this.gateSet1.passed && this.gateSet1.y + this.distanceTravelled >= this.playerY - 20) {
-                this.gateSet1.passed = true;
-                const chosenGate = this.playerX < this.centerX ? this.gateSet1.left : this.gateSet1.right;
-                this.triggerGate(chosenGate);
-            }
+            if (enemyScreenY >= this.horizonY) {
+                const enemyPt = this.getRoadPoint(0, enemyScreenY);
+                const alpha = Phaser.Math.Clamp((enemyScreenY - this.horizonY) / 30, 0, 1);
+                this.enemyArmyContainer.setVisible(true);
+                this.enemyArmyContainer.setAlpha(alpha);
+                this.enemyArmyContainer.x = enemyPt.x;
+                this.enemyArmyContainer.y = enemyPt.y;
+                this.enemyArmyContainer.setScale(enemyPt.scale);
+                this.enemyArmyContainer.setDepth(DEPTH.WORLD_BASE + Math.floor(enemyScreenY * 10));
 
-            // Check Gate 2 Collision
-            if (!this.gateSet2.passed && this.gateSet2.y + this.distanceTravelled >= this.playerY - 20) {
-                this.gateSet2.passed = true;
-                const chosenGate = this.playerX < this.centerX ? this.gateSet2.left : this.gateSet2.right;
-                this.triggerGate(chosenGate);
+                if (enemyScreenY >= this.playerScreenY - 30) {
+                    this.startFinalBattle();
+                }
+            } else {
+                this.enemyArmyContainer.setVisible(false);
             }
-
-            // Check Finish Line Hit -> Trigger Boss Fight
-            if (currFinishY >= this.playerY - 40) {
-                this.startBossFight();
-            }
-        } else if (this.gameState === 'BOSS_FIGHT') {
-            // Boss idle menacing breathing
-            this.bossSprite.scaleY = 1.4 + Math.sin(time * 0.008) * 0.06;
         }
     }
 
-    triggerGate(gate) {
-        let prevCount = this.crowdCount;
+    applyGateEffect(side, gateY) {
+        this.playSfx('sfx_click');
+        this.cameras.main.shake(140, 0.012);
+
+        const prev = this.crowdCount;
         let delta = 0;
 
-        if (gate.type === 'ADD') {
-            delta = gate.val;
-            this.crowdCount = Math.max(1, this.crowdCount + delta);
-        } else if (gate.type === 'SUB') {
-            delta = gate.val;
-            this.crowdCount = Math.max(1, this.crowdCount + delta);
-        } else if (gate.type === 'MULT') {
-            delta = this.crowdCount * (gate.val - 1);
-            this.crowdCount = this.crowdCount * gate.val;
+        if (side.type === '+') {
+            delta = side.val;
+            this.crowdCount += delta;
+        } else if (side.type === 'x') {
+            delta = this.crowdCount * (side.val - 1);
+            this.crowdCount = this.crowdCount * side.val;
         }
 
-        this.countText.setText(`👥 ${this.crowdCount}`);
-        this.updateCrowdVisuals();
-        this.playSfx('sfx_click');
-
-        // Floating multiplier text
-        const sign = delta >= 0 ? `+${delta}` : `${delta}`;
-        const color = delta >= 0 ? '#10b981' : '#ef4444';
-        const floatText = this.add.text(this.playerX, this.playerY - 80, sign, {
-            fontSize: '34px',
-            fontFamily: 'Arial Black',
-            color: color,
-            stroke: '#ffffff',
-            strokeThickness: 4
-        }).setOrigin(0.5).setDepth(600);
-
+        this.bubbleCountText.setText(`${this.crowdCount}`);
         this.tweens.add({
-            targets: floatText,
-            y: floatText.y - 70,
-            alpha: 0,
-            scale: 1.4,
-            duration: 800,
-            ease: 'Power2',
-            onComplete: () => floatText.destroy()
+            targets: this.playerBubble,
+            scale: 1.35,
+            duration: 120,
+            yoyo: true
         });
 
-        // Flash screen & Camera Shake
-        this.cameras.main.shake(180, 0.012);
-        this.spawnConfetti(this.playerX, this.playerY - 20, 18);
+        this.updateCrowdVisuals();
+
+        const playerPt = this.getRoadPoint(this.playerLaneX, this.playerScreenY);
+        const deltaLabel = `+${delta}`;
+        const popupText = this.add.text(playerPt.x, this.playerScreenY - 95, deltaLabel, {
+            fontSize: '44px',
+            fontFamily: 'Arial Black',
+            color: '#22c55e',
+            stroke: '#ffffff',
+            strokeThickness: 6
+        }).setOrigin(0.5).setDepth(DEPTH.POPUP_FX);
+
+        const subPopup = this.add.text(playerPt.x, this.playerScreenY - 60, `TOTAL: ${this.crowdCount}`, {
+            fontSize: '18px',
+            fontFamily: 'Arial Black',
+            color: '#38bdf8',
+            stroke: '#000000',
+            strokeThickness: 3
+        }).setOrigin(0.5).setDepth(DEPTH.POPUP_FX);
+
+        this.tweens.add({
+            targets: [popupText, subPopup],
+            y: '-=80',
+            alpha: 0,
+            scale: 1.3,
+            duration: 900,
+            ease: 'Power2',
+            onComplete: () => {
+                popupText.destroy();
+                subPopup.destroy();
+            }
+        });
+
+        this.spawnSplash(playerPt.x, this.playerScreenY - 40, 0x22c55e, 25);
+        this.spawnSplash(playerPt.x, this.playerScreenY - 20, 0x38bdf8, 20);
     }
 
-    spawnConfetti(x, y, count) {
+    spawnSplash(x, y, color, count) {
         for (let i = 0; i < count; i++) {
-            const p = this.add.sprite(x, y, 'star_particle');
-            const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-            const speed = Phaser.Math.FloatBetween(80, 240);
-            p.setDepth(700);
-            p.setTint(Phaser.Utils.Array.GetRandom([0x38bdf8, 0xfacc15, 0x10b981, 0xff4757, 0xffffff]));
+            const p = this.add.circle(x, y, Phaser.Math.Between(3, 7), color);
+            const a = Phaser.Math.FloatBetween(0, Math.PI * 2);
+            const spd = Phaser.Math.FloatBetween(60, 240);
+            p.setDepth(DEPTH.POPUP_FX);
 
             this.tweens.add({
                 targets: p,
-                x: x + Math.cos(angle) * speed,
-                y: y + Math.sin(angle) * speed,
+                x: x + Math.cos(a) * spd,
+                y: y + Math.sin(a) * spd,
                 alpha: 0,
-                scale: Phaser.Math.FloatBetween(0.3, 1.2),
-                duration: 600,
-                ease: 'Power2',
+                scale: 0.1,
+                duration: 500,
                 onComplete: () => p.destroy()
             });
         }
     }
 
-    startBossFight() {
-        this.gameState = 'BOSS_FIGHT';
-        this.topTitle.setText('⚔️ SMASH THE BOSS! ⚔️');
+    startFinalBattle() {
+        if (this.gameState === 'BATTLE' || this.gameState === 'ENDCARD') return;
+        this.gameState = 'BATTLE';
 
-        // Runners rush towards the Boss
-        const targetBossY = this.bossContainer.y + 40;
-        this.runners.forEach((r, idx) => {
-            this.tweens.add({
-                targets: r,
-                x: this.centerX + Phaser.Math.Between(-50, 50),
-                y: targetBossY + Phaser.Math.Between(-10, 40),
-                duration: 400 + idx * 12,
-                ease: 'Power2',
-                onComplete: () => {
-                    this.hitBoss(2.5);
+        const playerPt = this.getRoadPoint(0, this.playerScreenY);
+
+        this.battleTimer = this.time.addEvent({
+            delay: 60,
+            repeat: -1,
+            callback: () => {
+                const tickDamage = Math.max(3, Math.floor(Math.max(this.crowdCount, this.enemyArmyCount) / 15));
+                this.crowdCount = Math.max(0, this.crowdCount - tickDamage);
+                this.enemyArmyCount = Math.max(0, this.enemyArmyCount - tickDamage);
+
+                this.bubbleCountText.setText(`${this.crowdCount}`);
+                this.enemyBubbleText.setText(`${this.enemyArmyCount}`);
+
+                this.cameras.main.shake(60, 0.008);
+                this.spawnSplash(playerPt.x, this.playerScreenY - 40, 0xef4444, 4);
+                this.spawnSplash(playerPt.x, this.playerScreenY - 20, 0x0284c7, 4);
+                this.playSfx('sfx_click');
+
+                if (this.crowdCount <= 0 || this.enemyArmyCount <= 0) {
+                    this.battleTimer.remove();
+
+                    if (this.crowdCount > 0 && this.enemyArmyCount <= 0) {
+                        this.finishBattle(true);
+                    } else {
+                        this.finishBattle(false);
+                    }
                 }
-            });
-        });
-    }
-
-    hitBoss(damage) {
-        this.bossHp -= damage;
-        this.updateBossHpBar();
-
-        // Stagger Boss
-        this.bossSprite.setTint(0xffffff);
-        this.time.delayedCall(60, () => {
-            if (this.bossSprite) this.bossSprite.clearTint();
-        });
-
-        this.cameras.main.shake(80, 0.008);
-        this.spawnConfetti(this.centerX + Phaser.Math.Between(-30, 30), this.bossContainer.y - 20, 4);
-
-        if (this.bossHp <= 0 && this.gameState !== 'ENDCARD') {
-            this.defeatBoss();
-        }
-    }
-
-    defeatBoss() {
-        this.gameState = 'ENDCARD';
-        this.playSfx('sfx_complete');
-
-        // Big Boss Explosion
-        this.spawnConfetti(this.centerX, this.bossContainer.y, 60);
-        this.cameras.main.shake(400, 0.025);
-
-        this.tweens.add({
-            targets: this.bossContainer,
-            scale: 1.8,
-            alpha: 0,
-            duration: 600,
-            ease: 'Back.easeIn',
-            onComplete: () => {
-                this.bossContainer.setVisible(false);
-                this.showEndCard();
             }
         });
     }
 
-    showEndCard() {
+    finishBattle(isVictory) {
+        if (this.gameState === 'ENDCARD') return;
+        this.gameState = 'ENDCARD';
+
+        if (isVictory) {
+            this.playSfx('sfx_complete');
+            this.spawnSplash(this.centerX, this.playerScreenY - 40, 0xfacc15, 50);
+            this.cameras.main.shake(300, 0.02);
+
+            if (this.castleBanner) {
+                this.castleBanner.setText('👑 CASTLE CONQUERED! 👑');
+                this.castleBanner.setColor('#22c55e');
+            }
+
+            this.tweens.add({
+                targets: this.enemyArmyContainer,
+                scale: 0.1,
+                alpha: 0,
+                duration: 400,
+                onComplete: () => this.enemyArmyContainer.setVisible(false)
+            });
+        } else {
+            this.playSfx('sfx_gameover');
+            this.cameras.main.shake(300, 0.02);
+        }
+
+        this.time.delayedCall(600, () => {
+            this.showEndCard(isVictory);
+            this.createConfetti();
+        });
+    }
+
+    showEndCard(isVictory) {
         const overlay = this.add.rectangle(this.centerX, this.h / 2, this.w, this.h, 0x000000, 0)
             .setInteractive()
-            .setDepth(1000);
+            .setDepth(DEPTH.ENDCARD);
 
         this.tweens.add({
             targets: overlay,
@@ -794,87 +809,54 @@ export class GameScene extends Phaser.Scene {
 
         overlay.on('pointerdown', () => this.ShowStore());
 
-        // End Card Container
-        const card = this.add.container(this.centerX, this.h / 2).setDepth(1001);
+        const card = this.add.container(this.centerX, this.h / 2).setDepth(DEPTH.ENDCARD + 1);
 
-        // Victory Ribbon / Text
-        const victoryText = this.add.text(0, -180, '🏆 VICTORY! 🏆', {
-            fontSize: '36px',
+        const title = this.add.text(0, -160, isVictory ? '🏆 CASTLE CONQUERED! 🏆' : '💀 DEFEAT! 💀', {
+            fontSize: '32px',
             fontFamily: 'Arial Black',
-            color: '#facc15',
+            color: isVictory ? '#facc15' : '#ef4444',
             stroke: '#000000',
             strokeThickness: 6
         }).setOrigin(0.5);
 
-        const subText = this.add.text(0, -130, 'YOU ARE THE RUN MASTER!', {
-            fontSize: '16px',
+        const subText = this.add.text(0, -110, isVictory ? `SURVIVORS: ${this.crowdCount}` : 'YOU NEED MORE SOLDIERS!', {
+            fontSize: '18px',
             fontFamily: 'Arial Black',
             color: '#ffffff'
         }).setOrigin(0.5);
 
-        // Stars
-        const starGroup = this.add.container(0, -75);
-        for (let i = -1; i <= 1; i++) {
-            const star = this.add.text(i * 50, 0, '⭐', { fontSize: '38px' }).setOrigin(0.5);
-            star.setScale(0);
-            this.tweens.add({
-                targets: star,
-                scale: i === 0 ? 1.3 : 1.0,
-                duration: 500,
-                delay: 200 + Math.abs(i) * 150,
-                ease: 'Back.easeOut'
-            });
-            starGroup.add(star);
-        }
-
-        // Score info
-        const infoBg = this.add.graphics();
-        infoBg.fillStyle(0x1e293b, 0.9);
-        infoBg.fillRoundedRect(-140, -25, 280, 50, 16);
-        infoBg.lineStyle(2, 0x38bdf8, 1);
-        infoBg.strokeRoundedRect(-140, -25, 280, 50, 16);
-
-        const scoreText = this.add.text(0, 0, `👑 CROWD POWER: ${this.crowdCount * 100} PTS`, {
-            fontSize: '15px',
-            fontFamily: 'Arial Black',
-            color: '#38bdf8'
-        }).setOrigin(0.5);
-
-        // Big CTA Button
-        const ctaBtn = this.add.container(0, 95);
+        const ctaBtn = this.add.container(0, 80);
         const btnBg = this.add.graphics();
-        btnBg.fillStyle(0x22c55e, 1);
-        btnBg.fillRoundedRect(-135, -30, 270, 60, 30);
-        btnBg.lineStyle(3, 0xffffff, 0.9);
-        btnBg.strokeRoundedRect(-135, -30, 270, 60, 30);
+        btnBg.fillStyle(isVictory ? 0x22c55e : 0x3b82f6, 1);
+        btnBg.fillRoundedRect(-140, -32, 280, 64, 32);
+        btnBg.lineStyle(3, 0xffffff, 1);
+        btnBg.strokeRoundedRect(-140, -32, 280, 64, 32);
 
-        const btnText = this.add.text(0, -2, 'DOWNLOAD NOW', {
+        const btnText = this.add.text(0, -4, isVictory ? 'DOWNLOAD NOW' : 'TRY AGAIN', {
             fontSize: '22px',
             fontFamily: 'Arial Black',
             color: '#ffffff',
-            stroke: '#15803d',
+            stroke: isVictory ? '#15803d' : '#1d4ed8',
             strokeThickness: 4
         }).setOrigin(0.5);
 
-        const subBtnText = this.add.text(0, 18, 'FREE ON GOOGLE PLAY', {
-            fontSize: '10px',
+        const subBtnText = this.add.text(0, 18, 'FREE TO PLAY', {
+            fontSize: '11px',
             fontFamily: 'Arial Black',
             color: '#dcfce7'
         }).setOrigin(0.5);
 
         ctaBtn.add([btnBg, btnText, subBtnText]);
 
-        // CTA Pulse animation
         this.tweens.add({
             targets: ctaBtn,
             scale: 1.08,
             duration: 650,
             yoyo: true,
-            repeat: -1,
-            ease: 'Sine.easeInOut'
+            repeat: -1
         });
 
-        card.add([victoryText, subText, starGroup, infoBg, scoreText, ctaBtn]);
+        card.add([title, subText, ctaBtn]);
         card.setScale(0.7);
         card.alpha = 0;
 
@@ -886,7 +868,6 @@ export class GameScene extends Phaser.Scene {
             ease: 'Back.easeOut'
         });
 
-        // Auto redirect after 20s if inactive
         this.time.delayedCall(20000, () => {
             if (!this.hasTriggeredStore) {
                 this.ShowStore();
@@ -901,31 +882,77 @@ export class GameScene extends Phaser.Scene {
         const storeUrl = "https://play.google.com/store/apps/details?id=com.bf14.epic.run.survivor.game";
         console.log("Playturbo: ShowStore triggered (CTA Click)");
 
-        // 1. Mintegral / Playturbo
         if (typeof window.install === 'function') {
             window.install();
             return;
         }
-
-        // 2. Google Ads
         if (typeof ExitApi !== 'undefined' && typeof ExitApi.exit === 'function') {
             ExitApi.exit();
             return;
         }
-
-        // 3. AppLovin (MRAID)
         if (typeof mraid !== 'undefined' && typeof mraid.open === 'function') {
             mraid.open(storeUrl);
             return;
         }
-
-        // 4. TikTok Ads / Pangle
         if (typeof window.openAppStore === 'function') {
             window.openAppStore();
             return;
         }
-
-        // Fallback for regular browser test
         window.open(storeUrl, '_blank');
     }
+
+    createConfetti() {
+        const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff, 0xff8800, 0xfacc15];
+
+        // 1. Pháo nổ tung 360 độ ngay chính giữa màn hình (Center Fireworks Burst)
+        const centerBurst = this.add.particles(this.centerX, this.h * 0.38, 'confetti', {
+            speed: { min: 120, max: 420 },
+            angle: { min: 0, max: 360 },
+            gravityY: 280,
+            lifespan: 3800,
+            scale: { start: 1.6, end: 0.4 },
+            rotate: { min: 0, max: 720 },
+            tint: colors,
+            quantity: 70
+        });
+
+        // 2. Pháo bên trái bắn chéo rót vào tâm giữa màn hình
+        const leftCannon = this.add.particles(20, this.h * 0.8, 'confetti', {
+            speed: { min: 380, max: 680 },
+            angle: { min: -65, max: -38 },
+            gravityY: 380,
+            lifespan: 4000,
+            scale: { start: 1.4, end: 0.4 },
+            rotate: { min: 0, max: 720 },
+            tint: colors,
+            quantity: 45
+        });
+
+        // 3. Pháo bên phải bắn chéo rót vào tâm giữa màn hình
+        const rightCannon = this.add.particles(this.w - 20, this.h * 0.8, 'confetti', {
+            speed: { min: 380, max: 680 },
+            angle: { min: -142, max: -115 },
+            gravityY: 380,
+            lifespan: 4000,
+            scale: { start: 1.4, end: 0.4 },
+            rotate: { min: 0, max: 720 },
+            tint: colors,
+            quantity: 45
+        });
+
+        centerBurst.setDepth(50000);
+        leftCannon.setDepth(50000);
+        rightCannon.setDepth(50000);
+
+        centerBurst.explode();
+        leftCannon.explode();
+        rightCannon.explode();
+
+        this.time.delayedCall(5000, () => {
+            centerBurst.destroy();
+            leftCannon.destroy();
+            rightCannon.destroy();
+        });
+    }
+
 }
