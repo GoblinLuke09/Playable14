@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1.0, minimum-scale=1.0,maximum-scale=1.0"/>
+    <title>Phaser Nodejs Project</title>
+
+    <!-- Các thẻ cấu hình bắt buộc cho Google Ads -->
+     
+    <!--meta name="ad.orientation" content="portrait"--> 
+    <!-- Thay bằng content="landscape" nếu game của bạn chơi màn hình ngang -->
+    
+    <!--meta name="ad.size" content="width=320,height=480"-->
+    <!--script type="text/javascript" src="https://tpc.googlesyndication.com/pagead/gadgets/html5/api/exitapi.js"></script--> 
+
+
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
+        }
+        #game-container {
+            width: 100%;
+            height: 100%;
+        }
+        #game-container canvas {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: fill;
+        }
+    </style>
+    
+    <!-- SDK của AppLovin (Bắt buộc phải có dòng này) -->
+    <!--script src="mraid.js"></script-->
+
+
+
+</head>
+<body>
+    <div id="game-container"></div>
+    <!-- Trỏ trực tiếp vào file script trong src -->
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>

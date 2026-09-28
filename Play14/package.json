@@ -1,0 +1,24 @@
+{
+  "name": "bfundev",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@esotericsoftware/spine-phaser-v4": "^4.2.114",
+    "phaser": "^4.1.0"
+  },
+  "devDependencies": {
+    "terser": "^5.47.1",
+    "vite": "^8.0.10",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}
