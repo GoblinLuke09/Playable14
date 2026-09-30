@@ -102,7 +102,7 @@ export class GameScene extends Phaser.Scene {
         const roadW = Phaser.Math.Linear(this.roadTopWidth, this.roadBottomWidth, t);
         const scale = Phaser.Math.Linear(0.45, 1.0, t);
 
-        const tartanFraction = 0.20; // Left 20% is decorative red tartan track, 80% is playable green turf
+        const tartanFraction = 0.22; // Left 22% is decorative red tartan track, 78% is playable green turf
 
         const fullLeftX = this.centerX - roadW / 2;
         const fullRightX = this.centerX + roadW / 2;
@@ -141,52 +141,92 @@ export class GameScene extends Phaser.Scene {
         // 2. Generate Spiked Club Projectile Texture
         this.projectileKey = generateProjectileTexture(this);
 
-        // 2. Blue Speech Bubble
+        // 2. Blue Speech Bubble (3D Volumetric Glossy Badge)
         if (!this.textures.exists('bubble_blue')) {
             const canvas = document.createElement('canvas');
-            canvas.width = 110;
-            canvas.height = 65;
+            canvas.width = 116;
+            canvas.height = 70;
             const ctx = canvas.getContext('2d');
 
-            ctx.fillStyle = '#0284c7';
+            // Drop shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(8, 8, 100, 44, 22) : ctx.fillRect(8, 8, 100, 44);
+            ctx.fill();
+
+            // 3D Spherical/Cylindrical Body Gradient
+            const bgGrad = ctx.createLinearGradient(0, 4, 0, 48);
+            bgGrad.addColorStop(0, '#38bdf8');
+            bgGrad.addColorStop(0.3, '#0284c7');
+            bgGrad.addColorStop(0.85, '#0369a1');
+            bgGrad.addColorStop(1, '#075985');
+
+            ctx.fillStyle = bgGrad;
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 3.5;
             ctx.beginPath();
-            ctx.roundRect ? ctx.roundRect(6, 6, 98, 42, 20) : ctx.fillRect(6, 6, 98, 42);
+            ctx.roundRect ? ctx.roundRect(6, 4, 100, 44, 22) : ctx.fillRect(6, 4, 100, 44);
             ctx.fill();
             ctx.stroke();
 
+            // Glossy Glass Highlight Arc
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
             ctx.beginPath();
-            ctx.moveTo(46, 47);
-            ctx.lineTo(55, 60);
+            ctx.ellipse(56, 14, 38, 7, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Tail with 3D shading
+            ctx.beginPath();
+            ctx.moveTo(48, 47);
+            ctx.lineTo(56, 62);
             ctx.lineTo(64, 47);
-            ctx.fillStyle = '#0284c7';
+            ctx.fillStyle = '#0369a1';
             ctx.fill();
             ctx.stroke();
 
             this.textures.addCanvas('bubble_blue', canvas);
         }
 
-        // 3. Red Speech Bubble
+        // 3. Red Speech Bubble (3D Volumetric Glossy Badge)
         if (!this.textures.exists('bubble_red')) {
             const canvas = document.createElement('canvas');
-            canvas.width = 110;
-            canvas.height = 65;
+            canvas.width = 116;
+            canvas.height = 70;
             const ctx = canvas.getContext('2d');
 
-            ctx.fillStyle = '#ef4444';
+            // Drop shadow
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(8, 8, 100, 44, 22) : ctx.fillRect(8, 8, 100, 44);
+            ctx.fill();
+
+            // 3D Body Gradient
+            const bgGrad = ctx.createLinearGradient(0, 4, 0, 48);
+            bgGrad.addColorStop(0, '#f87171');
+            bgGrad.addColorStop(0.3, '#ef4444');
+            bgGrad.addColorStop(0.85, '#dc2626');
+            bgGrad.addColorStop(1, '#991b1b');
+
+            ctx.fillStyle = bgGrad;
             ctx.strokeStyle = '#ffffff';
             ctx.lineWidth = 3.5;
             ctx.beginPath();
-            ctx.roundRect ? ctx.roundRect(6, 6, 98, 42, 20) : ctx.fillRect(6, 6, 98, 42);
+            ctx.roundRect ? ctx.roundRect(6, 4, 100, 44, 22) : ctx.fillRect(6, 4, 100, 44);
             ctx.fill();
             ctx.stroke();
 
+            // Glossy Glass Highlight Arc
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
             ctx.beginPath();
-            ctx.moveTo(46, 47);
-            ctx.lineTo(55, 60);
+            ctx.ellipse(56, 14, 38, 7, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Tail
+            ctx.beginPath();
+            ctx.moveTo(48, 47);
+            ctx.lineTo(56, 62);
             ctx.lineTo(64, 47);
-            ctx.fillStyle = '#ef4444';
+            ctx.fillStyle = '#dc2626';
             ctx.fill();
             ctx.stroke();
 
@@ -197,26 +237,26 @@ export class GameScene extends Phaser.Scene {
     createStadiumBackground() {
         // Clean Warm Sandy Stadium Ground Environment matching reference image
         const bg = this.add.graphics().setDepth(DEPTH.BACKGROUND);
-        bg.fillStyle(0xede4cd, 1);
+        bg.fillStyle(0xded7cb, 1);
         bg.fillRect(0, 0, this.w, this.h);
 
-        // Soft sky atmosphere above the track horizon
+        // Soft warm atmospheric horizon
         const sky = this.add.graphics().setDepth(DEPTH.BACKGROUND + 1);
-        sky.fillGradientStyle(0xd4e7f8, 0xd4e7f8, 0xede4cd, 0xede4cd, 1, 1, 1, 1);
+        sky.fillGradientStyle(0xeee9e0, 0xeee9e0, 0xded7cb, 0xded7cb, 1, 1, 1, 1);
         sky.fillRect(0, 0, this.w, this.horizonY + 30);
     }
 
     createPerspectiveRoad() {
         this.roadGraphics = this.add.graphics().setDepth(DEPTH.ROAD);
         this.trackScrollProgress = 0;
-        this.stripeCount = 10;
-        this.fenceCount = 12;
+        this.stripeCount = 8;
+        this.fenceCount = 10;
     }
 
     draw3DPerspectiveRoad() {
         this.roadGraphics.clear();
 
-        const tartanFraction = 0.20; // 20% left side is red athletic running track, 80% right side is green turf
+        const tartanFraction = 0.22; // 22% left side is red athletic running track, 78% right side is green grass turf
 
         const topLeft = this.centerX - this.roadTopWidth / 2;
         const topRight = this.centerX + this.roadTopWidth / 2;
@@ -226,7 +266,17 @@ export class GameScene extends Phaser.Scene {
         const topTartan = topLeft + this.roadTopWidth * tartanFraction;
         const botTartan = botLeft + this.roadBottomWidth * tartanFraction;
 
-        // 1. Right Side Green Turf Alternating Horizontal Stripes
+        // 0. Soft Ambient Occlusion Under Track Borders (3D Ground Contact)
+        this.roadGraphics.fillStyle(0x000000, 0.10);
+        this.roadGraphics.beginPath();
+        this.roadGraphics.moveTo(topLeft - 10, this.horizonY);
+        this.roadGraphics.lineTo(topRight + 10, this.horizonY);
+        this.roadGraphics.lineTo(botRight + 20, this.bottomY);
+        this.roadGraphics.lineTo(botLeft - 20, this.bottomY);
+        this.roadGraphics.closePath();
+        this.roadGraphics.fill();
+
+        // 1. Right Side Green Turf Alternating Horizontal Stripes (Exact colors from reference)
         const numStripes = this.stripeCount;
         for (let i = 0; i < numStripes * 2; i++) {
             const pStart = ((this.trackScrollProgress + i / numStripes) % 2) / 2;
@@ -248,7 +298,8 @@ export class GameScene extends Phaser.Scene {
             const rx1 = this.centerX + w1 / 2;
 
             const isDark = (i % 2 === 0);
-            this.roadGraphics.fillStyle(isDark ? 0x5ea364 : 0xade6a2, 1);
+            // Light grass: #9edb96, Dark grass: #5ca358
+            this.roadGraphics.fillStyle(isDark ? 0x5ca358 : 0x9edb96, 1);
             this.roadGraphics.beginPath();
             this.roadGraphics.moveTo(tx0, y0);
             this.roadGraphics.lineTo(rx0, y0);
@@ -258,8 +309,8 @@ export class GameScene extends Phaser.Scene {
             this.roadGraphics.fill();
         }
 
-        // 2. Left Side Red Tartan Athletic Running Track
-        this.roadGraphics.fillStyle(0xd9534f, 1);
+        // 2. Left Side Red Tartan Athletic Running Track (#d96556)
+        this.roadGraphics.fillStyle(0xd96556, 1);
         this.roadGraphics.beginPath();
         this.roadGraphics.moveTo(topLeft, this.horizonY);
         this.roadGraphics.lineTo(topTartan, this.horizonY);
@@ -268,8 +319,8 @@ export class GameScene extends Phaser.Scene {
         this.roadGraphics.closePath();
         this.roadGraphics.fill();
 
-        // 2 Thin White Lane Lines inside the Red Tartan Track
-        this.roadGraphics.lineStyle(2, 0xffffff, 0.95);
+        // 2 Thin White Lane Lines inside Red Running Track
+        this.roadGraphics.lineStyle(1.8, 0xffffff, 0.95);
         const topLane1 = topLeft + this.roadTopWidth * tartanFraction * 0.33;
         const botLane1 = botLeft + this.roadBottomWidth * tartanFraction * 0.33;
         const topLane2 = topLeft + this.roadTopWidth * tartanFraction * 0.66;
@@ -277,25 +328,26 @@ export class GameScene extends Phaser.Scene {
         this.roadGraphics.lineBetween(topLane1, this.horizonY, botLane1, this.bottomY);
         this.roadGraphics.lineBetween(topLane2, this.horizonY, botLane2, this.bottomY);
 
-        // 3. Right Outer Dark Green Border Strip
-        const topCurb = topRight - 8;
-        const botCurb = botRight - 16;
-        this.roadGraphics.fillStyle(0x356d39, 1);
-        this.roadGraphics.beginPath();
-        this.roadGraphics.moveTo(topCurb, this.horizonY);
-        this.roadGraphics.lineTo(topRight, this.horizonY);
-        this.roadGraphics.lineTo(botRight, this.bottomY);
-        this.roadGraphics.lineTo(botCurb, this.bottomY);
-        this.roadGraphics.closePath();
-        this.roadGraphics.fill();
+        // 3. Crisp White Perspective Border & Divider Lines
+        this.roadGraphics.lineStyle(3.0, 0xffffff, 1);
+        this.roadGraphics.lineBetween(topLeft, this.horizonY, botLeft, this.bottomY);     // Left outer curb
+        this.roadGraphics.lineBetween(topTartan, this.horizonY, botTartan, this.bottomY); // Center divider
+        this.roadGraphics.lineBetween(topRight, this.horizonY, botRight, this.bottomY);   // Right outer curb
 
-        // 4. White Perspective Divider Lines
-        this.roadGraphics.lineStyle(3, 0xffffff, 1);
-        this.roadGraphics.lineBetween(topLeft, this.horizonY, botLeft, this.bottomY); // Left boundary
-        this.roadGraphics.lineBetween(topTartan, this.horizonY, botTartan, this.bottomY); // Track divider
-        this.roadGraphics.lineBetween(topRight, this.horizonY, botRight, this.bottomY); // Right boundary
+        // 4. Continuous Perspective White Top & Mid Rails along outer boundaries
+        this.roadGraphics.lineStyle(2.2, 0xffffff, 0.95);
+        // Left Rails
+        this.roadGraphics.lineBetween(topLeft - 3, this.horizonY - 10, botLeft - 3, this.bottomY - 32);
+        this.roadGraphics.lineBetween(topLeft - 3, this.horizonY - 5, botLeft - 3, this.bottomY - 16);
+        // Middle Divider Rails
+        this.roadGraphics.lineStyle(1.6, 0xffffff, 0.85);
+        this.roadGraphics.lineBetween(topTartan, this.horizonY - 8, botTartan, this.bottomY - 26);
+        // Right Rails
+        this.roadGraphics.lineStyle(2.2, 0xffffff, 0.95);
+        this.roadGraphics.lineBetween(topRight + 3, this.horizonY - 10, botRight + 3, this.bottomY - 32);
+        this.roadGraphics.lineBetween(topRight + 3, this.horizonY - 5, botRight + 3, this.bottomY - 16);
 
-        // 5. Perspective Stadium Fence Posts & Rails along borders
+        // 5. 3D White Hurdle / Fence Posts with perspective scaling
         const numPosts = this.fenceCount;
         for (let j = 0; j <= numPosts; j++) {
             const p = ((this.trackScrollProgress * 0.5 + j / numPosts) % 1);
@@ -307,18 +359,27 @@ export class GameScene extends Phaser.Scene {
             const mx = lx + w * tartanFraction;
             const rx = this.centerX + w / 2;
 
-            // White Posts
-            this.roadGraphics.lineStyle(Phaser.Math.Linear(1.5, 3.5, p), 0xffffff, 0.95);
-            this.roadGraphics.lineBetween(lx - 2, y, lx - 2, y - postH);
-            this.roadGraphics.lineBetween(mx, y, mx, y - postH * 0.85);
-            this.roadGraphics.lineBetween(rx + 2, y, rx + 2, y - postH);
+            // Soft Ground Drop Shadow under post bases
+            this.roadGraphics.fillStyle(0x000000, 0.20);
+            this.roadGraphics.fillEllipse(lx - 3, y + 2, Phaser.Math.Linear(3, 7, p), Phaser.Math.Linear(1.5, 3, p));
+            this.roadGraphics.fillEllipse(rx + 3, y + 2, Phaser.Math.Linear(3, 7, p), Phaser.Math.Linear(1.5, 3, p));
 
-            // Ball tops
+            // White Vertical Posts
+            const postW = Phaser.Math.Linear(2, 4, p);
+            this.roadGraphics.lineStyle(postW, 0xffffff, 1);
+            this.roadGraphics.lineBetween(lx - 3, y, lx - 3, y - postH);
+            this.roadGraphics.lineBetween(rx + 3, y, rx + 3, y - postH);
+
+            // Middle Divider Posts
+            this.roadGraphics.lineStyle(postW * 0.8, 0xffffff, 0.9);
+            this.roadGraphics.lineBetween(mx, y, mx, y - postH * 0.8);
+
+            // Post Caps (clean rounded white balls / caps)
             this.roadGraphics.fillStyle(0xffffff, 1);
-            const ballR = Phaser.Math.Linear(2, 4.5, p);
-            this.roadGraphics.fillCircle(lx - 2, y - postH, ballR);
-            this.roadGraphics.fillCircle(mx, y - postH * 0.85, ballR * 0.8);
-            this.roadGraphics.fillCircle(rx + 2, y - postH, ballR);
+            const capR = Phaser.Math.Linear(2.0, 4.5, p);
+            this.roadGraphics.fillCircle(lx - 3, y - postH, capR);
+            this.roadGraphics.fillCircle(rx + 3, y - postH, capR);
+            this.roadGraphics.fillCircle(mx, y - postH * 0.8, capR * 0.8);
         }
     }
 
@@ -481,14 +542,15 @@ export class GameScene extends Phaser.Scene {
         const bg = this.add.graphics();
         gate.graphics = bg;
 
-        const post1 = this.add.rectangle(0, 0, 10, 48, 0xbae6fd).setStrokeStyle(2, 0xffffff);
-        const post2 = this.add.rectangle(0, 0, 10, 48, 0xbae6fd).setStrokeStyle(2, 0xffffff);
+        // 3D Metallic Posts
+        const post1 = this.add.container(0, 0);
+        const post2 = this.add.container(0, 0);
 
-        const text = this.add.text(0, 0, gate.effect.label, {
-            fontSize: '32px',
+        const text = this.add.text(0, -2, gate.effect.label, {
+            fontSize: '34px',
             fontFamily: 'Arial Black, Impact',
             color: '#ffffff',
-            stroke: '#0284c7',
+            stroke: '#000000',
             strokeThickness: 5
         }).setOrigin(0.5);
 
@@ -531,10 +593,45 @@ export class GameScene extends Phaser.Scene {
         gate.text.x = xMid;
 
         gate.graphics.clear();
-        gate.graphics.fillStyle(gate.effect.color, 0.48);
-        gate.graphics.fillRect(xStart, -24, halfW, 48);
-        gate.graphics.lineStyle(3, 0xffffff, 0.95);
-        gate.graphics.strokeRect(xStart, -24, halfW, 48);
+
+        // 1. Soft Ground Glow under Gate
+        gate.graphics.fillStyle(gate.effect.color, 0.28);
+        gate.graphics.fillEllipse(xMid, 26, halfW * 0.9, 14);
+
+        // 2. Translucent 3D Holographic Glass Field
+        gate.graphics.fillStyle(gate.effect.color, 0.55);
+        gate.graphics.fillRect(xStart, -28, halfW, 54);
+
+        // 3D Glass Highlight Sheen Arc
+        gate.graphics.fillStyle(0xffffff, 0.25);
+        gate.graphics.fillRect(xStart + 3, -26, halfW - 6, 12);
+
+        // Neon Glow Outer Frame
+        gate.graphics.lineStyle(3.5, 0xffffff, 0.98);
+        gate.graphics.strokeRect(xStart, -28, halfW, 54);
+
+        // 3. 3D Cylindrical Vertical Posts
+        [xStart, xEnd].forEach(px => {
+            // Post core
+            gate.graphics.fillStyle(0x0f172a, 0.9);
+            gate.graphics.fillRect(px - 5, -34, 10, 66);
+
+            // Light side
+            gate.graphics.fillStyle(0xffffff, 0.9);
+            gate.graphics.fillRect(px - 4, -34, 4, 66);
+
+            // Glowing Energy Cap on top of pillar
+            gate.graphics.fillStyle(gate.effect.color, 1);
+            gate.graphics.fillCircle(px, -36, 6);
+            gate.graphics.fillStyle(0xffffff, 1);
+            gate.graphics.fillCircle(px, -36, 3);
+        });
+
+        // 4. Top 3D Arch Beam Connecting Pillars
+        gate.graphics.fillStyle(0x1e293b, 0.95);
+        gate.graphics.fillRect(xStart - 4, -32, halfW + 8, 8);
+        gate.graphics.fillStyle(0xffffff, 0.7);
+        gate.graphics.fillRect(xStart - 4, -32, halfW + 8, 2.5);
     }
 
     createCrowd() {
@@ -775,8 +872,11 @@ export class GameScene extends Phaser.Scene {
         if (this.trackScrollProgress > 1) this.trackScrollProgress -= 1;
         this.draw3DPerspectiveRoad();
 
-        // 2. Smooth Player Movement
+        // 2. Smooth Player Movement with 3D Banking Roll Physics
+        const prevLaneX = this.playerLaneX;
         this.playerLaneX = Phaser.Math.Linear(this.playerLaneX, this.targetLaneX, 0.2);
+        const laneVelocity = (this.playerLaneX - prevLaneX) / Math.max(0.001, dt);
+        const bankAngle = Phaser.Math.Clamp(laneVelocity * 4.2, -14, 14);
         const playerPt = this.getRoadPoint(this.playerLaneX, this.playerScreenY);
 
         // Update Crowd Visual Positions & Strict Clamping within green turf borders
@@ -789,12 +889,14 @@ export class GameScene extends Phaser.Scene {
             r.x = Phaser.Math.Clamp(desiredX, turfLeftEdge, turfRightEdge);
             r.y = playerPt.y + r.offsetY * playerPt.scale;
             r.setScale(0.95 * playerPt.scale);
+            r.setAngle(bankAngle * (0.85 + (i % 3) * 0.1));
             r.setDepth(DEPTH.WORLD_BASE + Math.floor(r.y * 10));
         }
 
         this.playerBubble.x = Phaser.Math.Clamp(playerPt.x, turfLeftEdge + 18, turfRightEdge - 18);
         this.playerBubble.y = playerPt.y - 65 * playerPt.scale;
         this.playerBubble.setScale(playerPt.scale);
+        this.playerBubble.setAngle(bankAngle * 0.4);
         this.playerBubble.setDepth(DEPTH.PLAYER_BUBBLE);
 
         // 3. Track Progression during RUNNING state
