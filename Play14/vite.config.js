@@ -27,5 +27,5 @@ export default defineConfig({
             }
         }
     },
-    assetsInclude: ['**/*.atlas.txt', '**/*.ttf'],
+    assetsInclude: ['**/*.atlas.txt', '**/*.ttf', '**/*.glb', '**/*.gltf', '**/*.fbx'],
 });
