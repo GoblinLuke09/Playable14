@@ -23,6 +23,7 @@ const config = {
     height: gameHeight,
     parent: 'game-container',
     transparent: true, // Transparent Phaser canvas overlay on top of 3D Three.js canvas
+    backgroundColor: 'rgba(0,0,0,0)',
     scale: {
         mode: Phaser.Scale.FIT, // Scale canvas to fit device screen
         autoCenter: Phaser.Scale.CENTER_BOTH // Center canvas on screen

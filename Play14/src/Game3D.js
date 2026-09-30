@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import skinModelUrl from './assets/Model/Skin_BF14.glb';
+import skinModelUrl from './assets/Model/Athlete_05.glb';
 
 export class Game3D {
     constructor(container, options = {}) {
@@ -15,7 +15,7 @@ export class Game3D {
         this.width = container.clientWidth || window.innerWidth;
         this.height = container.clientHeight || window.innerHeight;
 
-        this.isGameActive = false;
+        this.isGameActive = false; // Only starts running when user clicks/taps
         this.isLevelFinished = false;
 
         // Position on the GREEN TRACK (Green track is centered at x = -1.2, spans x = -4.8 to +2.4)
@@ -46,27 +46,24 @@ export class Game3D {
         this.animTime = 0;
         this.hitCooldown = 0;
 
+        this.clips = this.createAnimationClips();
         this.initThree();
         this.createEnvironment();
         this.createTrack();
         this.createLevelCourse();
         this.loadPlayerModel();
         this.setupEventListeners();
+        this.renderer.render(this.scene, this.camera);
     }
 
     initThree() {
-        // Scene
         this.scene = new THREE.Scene();
         this.scene.background = new THREE.Color(0xd7d0c3);
         this.scene.fog = new THREE.Fog(0xd7d0c3, 50, 230);
 
-        // Camera
-        this.camera = new THREE.PerspectiveCamera(48, this.width / this.height, 0.1, 350);
-        this.cameraOffset = new THREE.Vector3(0, 5.8, -9.2);
-        this.cameraLookOffset = new THREE.Vector3(0, 1.5, 9.0);
-        this.camera.position.set(-1.2, 5.8, -9.2);
+        this.camera = new THREE.PerspectiveCamera(52, this.width / this.height, 0.1, 350);
+        this.camera.position.set(-0.8, 7.2, -12.5);
 
-        // WebGL Renderer
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
         this.renderer.setSize(this.width, this.height);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -80,10 +77,13 @@ export class Game3D {
         this.renderer.domElement.style.left = '0';
         this.renderer.domElement.style.width = '100%';
         this.renderer.domElement.style.height = '100%';
-        this.renderer.domElement.style.zIndex = '1';
-        this.container.appendChild(this.renderer.domElement);
+        this.renderer.domElement.style.zIndex = '0';
+        if (this.container.firstChild) {
+            this.container.insertBefore(this.renderer.domElement, this.container.firstChild);
+        } else {
+            this.container.appendChild(this.renderer.domElement);
+        }
 
-        // Lighting
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
         this.scene.add(ambientLight);
 
@@ -155,7 +155,6 @@ export class Game3D {
             this.trackGroup.add(mesh);
         }
 
-        // 3. Side Railings & Floating Soccer Balls
         this.createSideRailings(trackLength);
         this.createFloatingSoccerBalls();
 
@@ -167,7 +166,6 @@ export class Game3D {
         const railGeo = new THREE.CylinderGeometry(0.05, 0.05, trackLength, 8);
         const fenceMat = new THREE.MeshLambertMaterial({ color: 0xf0f0f0 });
 
-        // Left outer rail (x = 5.3) and Right outer rail (x = -4.9)
         [5.3, -4.9].forEach(rx => {
             const topRail = new THREE.Mesh(railGeo, fenceMat);
             topRail.rotation.x = Math.PI / 2;
@@ -271,10 +269,8 @@ export class Game3D {
     // LEVEL COURSE: Only Stone Columns & Character Multiplier Gates
     // -----------------------------------------------------------------
     createLevelCourse() {
-        // 1. First Gate Choice (Z = 32): Left +3 vs Right +5
         this.createGatePair(32, { type: 'add', val: 3, label: '+3' }, { type: 'add', val: 5, label: '+5' });
 
-        // 2. First Stone Cylinder Pillar (Z = 65) - centered on green track (x = -1.2)
         const pillar1 = this.createStoneCylinderTower({
             x: -1.2,
             z: 65,
@@ -285,10 +281,8 @@ export class Game3D {
         });
         this.obstacles.push(pillar1);
 
-        // 3. Second Gate Choice (Z = 105): Left x2 vs Right +10
         this.createGatePair(105, { type: 'mult', val: 2, label: 'x2' }, { type: 'add', val: 10, label: '+10' });
 
-        // 4. Second Stone Cylinder Pillar (Z = 145) - centered on green track (x = -1.2)
         const pillar2 = this.createStoneCylinderTower({
             x: -1.2,
             z: 145,
@@ -299,10 +293,8 @@ export class Game3D {
         });
         this.obstacles.push(pillar2);
 
-        // 5. Third Gate Choice (Z = 175): Left +15 vs Right x3
         this.createGatePair(175, { type: 'add', val: 15, label: '+15' }, { type: 'mult', val: 3, label: 'x3' });
 
-        // 6. Final Mega Stone Column (Z = 200) - centered on green track (x = -1.2)
         const pillar3 = this.createStoneCylinderTower({
             x: -1.2,
             z: 200,
@@ -313,16 +305,13 @@ export class Game3D {
         });
         this.obstacles.push(pillar3);
 
-        // 7. Finish Line Stage (Z = 220) - centered on green track (x = -1.2)
         this.createFinishStage(220);
     }
 
     createGatePair(z, leftData, rightData) {
-        // Left Gate (x = 0.4, spans x = -1.1 to +1.9)
         const gLeft = this.createMultiplierGate(0.4, z, leftData);
         this.gates.push(gLeft);
 
-        // Right Gate (x = -2.8, spans x = -4.3 to -1.3)
         const gRight = this.createMultiplierGate(-2.8, z, rightData);
         this.gates.push(gRight);
     }
@@ -332,8 +321,6 @@ export class Game3D {
         group.position.set(x, 0, z);
 
         const isMult = data.type === 'mult';
-        
-        // Colors: Vibrant Blue for Addition, Vibrant Green for Multiplier
         const themeColor = isMult ? 0x10b981 : 0x0284c7;
         const energyColor = isMult ? 0x34d399 : 0x38bdf8;
         const gateMat = new THREE.MeshStandardMaterial({ color: themeColor, roughness: 0.25, metalness: 0.3 });
@@ -341,25 +328,21 @@ export class Game3D {
         const width = 3.2;
         const height = 4.2;
 
-        // Left post
         const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, height, 16), gateMat);
         p1.position.set(-width / 2 + 0.12, height / 2, 0);
         p1.castShadow = true;
         group.add(p1);
 
-        // Right post
         const p2 = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, height, 16), gateMat);
         p2.position.set(width / 2 - 0.12, height / 2, 0);
         p2.castShadow = true;
         group.add(p2);
 
-        // Top arch
         const topBar = new THREE.Mesh(new THREE.BoxGeometry(width, 0.5, 0.4), gateMat);
         topBar.position.set(0, height + 0.1, 0);
         topBar.castShadow = true;
         group.add(topBar);
 
-        // Translucent Energy Field
         const energyMat = new THREE.MeshBasicMaterial({
             color: energyColor,
             transparent: true,
@@ -371,7 +354,7 @@ export class Game3D {
         energyMesh.position.set(0, (height - 0.3) / 2, 0);
         group.add(energyMesh);
 
-        // --- HIGH-VISIBILITY 3D NUMBER BOARD ---
+        // 3D Number Board
         const boardCanvas = document.createElement('canvas');
         boardCanvas.width = 512;
         boardCanvas.height = 384;
@@ -590,7 +573,7 @@ export class Game3D {
     }
 
     // -----------------------------------------------------------------
-    // 3D MODEL LOADING & SQUAD SPAWNING (Skin_BF14.glb - No weapons)
+    // 3D MODEL LOADING & SQUAD SPAWNING (Skin_BF14.glb)
     // -----------------------------------------------------------------
     loadPlayerModel() {
         const loader = new GLTFLoader();
@@ -600,13 +583,10 @@ export class Game3D {
             this.basePlayerModel.scale.set(1.15, 1.15, 1.15);
 
             this.basePlayerModel.traverse((node) => {
-                if (node.isMesh) {
+                if (node.isSkinnedMesh || node.isMesh) {
+                    node.frustumCulled = false;
                     node.castShadow = true;
                     node.receiveShadow = true;
-                    if (node.material) {
-                        node.material.roughness = 0.45;
-                        node.material.metalness = 0.1;
-                    }
                 }
             });
 
@@ -616,7 +596,6 @@ export class Game3D {
             console.log('Skin_BF14.glb model loaded successfully!');
         };
 
-        // Try fetch array buffer for robust loading across all environments
         fetch(skinModelUrl)
             .then(res => res.arrayBuffer())
             .then(buffer => {
@@ -681,18 +660,38 @@ export class Game3D {
 
         const bones = {};
         memberModel.traverse((node) => {
+            if (node.isSkinnedMesh || node.isMesh) {
+                node.frustumCulled = false;
+                node.castShadow = true;
+                node.receiveShadow = true;
+            }
             if (node.isBone || node.name) {
                 bones[node.name] = node;
             }
         });
 
+        // Initialize AnimationMixer & Actions for smooth skeletal playback
+        const mixer = new THREE.AnimationMixer(memberModel);
+        const actions = {
+            idle: mixer.clipAction(this.clips.idle),
+            run: mixer.clipAction(this.clips.run),
+            punch: mixer.clipAction(this.clips.punch),
+            win: mixer.clipAction(this.clips.win)
+        };
+
+        const initialAction = (this.isGameActive && !this.isLevelFinished) ? 'run' : (this.isLevelFinished ? 'win' : 'idle');
+        actions[initialAction].play();
+        mixer.setTime(Math.random() * 2.0);
+
         this.squad.push({
             model: memberModel,
             bones: bones,
+            mixer: mixer,
+            actions: actions,
+            currentAction: initialAction,
             targetOffsetX: offsetX,
             targetOffsetZ: offsetZ,
-            animOffset: Math.random() * 2.0,
-            punchPhase: Math.random() * Math.PI
+            animOffset: Math.random() * 2.0
         });
     }
 
@@ -722,7 +721,9 @@ export class Game3D {
     }
 
     recalculateSquadFormation() {
-        const spacing = 0.75;
+        const count = this.squad.length;
+        // As squad grows, pack tighter horizontally and spread along length
+        const baseSpacing = Math.max(0.42, 0.72 - Math.min(0.3, count * 0.008));
 
         this.squad.forEach((member, i) => {
             if (i === 0) {
@@ -732,9 +733,13 @@ export class Game3D {
             }
 
             const phi = i * 2.399963;
-            const r = Math.sqrt(i) * spacing * 0.7;
-            member.targetOffsetX = Math.cos(phi) * r;
-            member.targetOffsetZ = -Math.abs(Math.sin(phi) * r) * 1.2 - 0.2;
+            const r = Math.sqrt(i) * baseSpacing;
+            // Limit horizontal spread so formation naturally stays within track width
+            const spreadX = Math.cos(phi) * r * 0.7;
+            const clampedX = THREE.MathUtils.clamp(spreadX, -1.7, 1.7);
+
+            member.targetOffsetX = clampedX;
+            member.targetOffsetZ = -Math.abs(Math.sin(phi) * r) * 1.3 - 0.2;
         });
     }
 
@@ -747,15 +752,12 @@ export class Game3D {
             isDragging = true;
             startPointerX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
             startPlayerX = this.playerX;
-            if (!this.isGameActive && !this.isLevelFinished) {
-                this.isGameActive = true;
-            }
+            this.isGameActive = true;
         };
 
         const onPointerMove = (e) => {
             if (!isDragging) return;
             const clientX = e.clientX || (e.touches && e.touches[0].clientX) || 0;
-            // Drag direction: moving mouse left moves player left, moving mouse right moves player right
             const deltaX = (clientX - startPointerX) / (this.width * 0.38);
             this.targetPlayerX = THREE.MathUtils.clamp(startPlayerX - deltaX * 3.6, this.minPlayerX, this.maxPlayerX);
         };
@@ -877,65 +879,224 @@ export class Game3D {
         });
     }
 
+    createAnimationClips() {
+        function rotateBone(baseQuat, axisX, axisY, axisZ, angle) {
+            const delta = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(axisX, axisY, axisZ), angle);
+            return baseQuat.clone().multiply(delta);
+        }
+
+        function rotateArm(baseQuat, lowerZ, swingX, yawY = 0) {
+            const qL = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), lowerZ);
+            const qS = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), swingX);
+            const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawY);
+            return baseQuat.clone().multiply(qL).multiply(qS).multiply(qY);
+        }
+
+        const Q = {
+            thighL: new THREE.Quaternion(0.991726, -0.0000005, -0.000003, 0.128371),
+            thighR: new THREE.Quaternion(0.991726, 0.0000003, 0.000003, 0.128371),
+            shinL: new THREE.Quaternion(0.123721, 0.000402, -0.004173, 0.992308),
+            shinR: new THREE.Quaternion(0.123721, -0.000402, 0.004173, 0.992308),
+            footL: new THREE.Quaternion(-0.541576, -0.047592, -0.077637, 0.835704),
+            footR: new THREE.Quaternion(-0.541576, 0.047592, 0.077637, 0.835704),
+            spine: new THREE.Quaternion(-0.657343, 0, 0, 0.753591),
+            spine1: new THREE.Quaternion(-0.030002, 0, 0, 0.999549),
+            uaL: new THREE.Quaternion(0.155596, 0.757021, 0.002600, 0.634588),
+            uaR: new THREE.Quaternion(0.155596, -0.757021, -0.002600, 0.634588),
+            faL: new THREE.Quaternion(0.087055, -0.089008, 0.016195, 0.992087),
+            faR: new THREE.Quaternion(0.087055, 0.089008, -0.016195, 0.992087)
+        };
+
+        // 1. IDLE CLIP
+        const idleDuration = 1.6;
+        const idleFrames = 9;
+        const idleTimes = [];
+        for (let i = 0; i < idleFrames; i++) idleTimes.push((i / (idleFrames - 1)) * idleDuration);
+        const idleQuats = {
+            'thighL.quaternion': [], 'thighR.quaternion': [],
+            'shinL.quaternion': [], 'shinR.quaternion': [],
+            'upper_armL.quaternion': [], 'upper_armR.quaternion': [],
+            'forearmL.quaternion': [], 'forearmR.quaternion': [],
+            'spine.quaternion': []
+        };
+        const idleSpinePos = [];
+        idleTimes.forEach(t => {
+            const breath = Math.sin((t / idleDuration) * Math.PI * 2) * 0.03;
+            rotateBone(Q.thighL, 1, 0, 0, 0).toArray(idleQuats['thighL.quaternion'], idleQuats['thighL.quaternion'].length);
+            rotateBone(Q.thighR, 1, 0, 0, 0).toArray(idleQuats['thighR.quaternion'], idleQuats['thighR.quaternion'].length);
+            rotateBone(Q.shinL, 1, 0, 0, 0).toArray(idleQuats['shinL.quaternion'], idleQuats['shinL.quaternion'].length);
+            rotateBone(Q.shinR, 1, 0, 0, 0).toArray(idleQuats['shinR.quaternion'], idleQuats['shinR.quaternion'].length);
+            rotateArm(Q.uaL, -1.18, 0).toArray(idleQuats['upper_armL.quaternion'], idleQuats['upper_armL.quaternion'].length);
+            rotateArm(Q.uaR, 1.18, 0).toArray(idleQuats['upper_armR.quaternion'], idleQuats['upper_armR.quaternion'].length);
+            rotateBone(Q.faL, 1, 0, 0, 0.35 + breath).toArray(idleQuats['forearmL.quaternion'], idleQuats['forearmL.quaternion'].length);
+            rotateBone(Q.faR, 1, 0, 0, 0.35 + breath).toArray(idleQuats['forearmR.quaternion'], idleQuats['forearmR.quaternion'].length);
+            rotateBone(Q.spine, 1, 0, 0, 0.04 + breath).toArray(idleQuats['spine.quaternion'], idleQuats['spine.quaternion'].length);
+            idleSpinePos.push(0, -0.0394 + breath * 0.5, -0.5765);
+        });
+        const idleTracks = [];
+        for (const [k, v] of Object.entries(idleQuats)) idleTracks.push(new THREE.QuaternionKeyframeTrack(k, idleTimes, v));
+        idleTracks.push(new THREE.VectorKeyframeTrack('spine.position', idleTimes, idleSpinePos));
+        const clipIdle = new THREE.AnimationClip('idle', idleDuration, idleTracks);
+
+        // 2. RUN CLIP
+        const runDuration = 0.55;
+        const runFrames = 13;
+        const runTimes = [];
+        for (let i = 0; i < runFrames; i++) runTimes.push((i / (runFrames - 1)) * runDuration);
+        const runQuats = {
+            'thighL.quaternion': [], 'thighR.quaternion': [],
+            'shinL.quaternion': [], 'shinR.quaternion': [],
+            'footL.quaternion': [], 'footR.quaternion': [],
+            'upper_armL.quaternion': [], 'upper_armR.quaternion': [],
+            'forearmL.quaternion': [], 'forearmR.quaternion': [],
+            'spine.quaternion': [], 'spine001.quaternion': []
+        };
+        const runSpinePos = [];
+        runTimes.forEach(t => {
+            const phase = (t / runDuration) * Math.PI * 2;
+            const swing = Math.sin(phase);
+            rotateBone(Q.thighL, 1, 0, 0, -swing * 0.9).toArray(runQuats['thighL.quaternion'], runQuats['thighL.quaternion'].length);
+            rotateBone(Q.thighR, 1, 0, 0, swing * 0.9).toArray(runQuats['thighR.quaternion'], runQuats['thighR.quaternion'].length);
+            rotateBone(Q.shinL, 1, 0, 0, Math.max(0, swing * 1.55)).toArray(runQuats['shinL.quaternion'], runQuats['shinL.quaternion'].length);
+            rotateBone(Q.shinR, 1, 0, 0, Math.max(0, -swing * 1.55)).toArray(runQuats['shinR.quaternion'], runQuats['shinR.quaternion'].length);
+            rotateBone(Q.footL, 1, 0, 0, swing * 0.35).toArray(runQuats['footL.quaternion'], runQuats['footL.quaternion'].length);
+            rotateBone(Q.footR, 1, 0, 0, -swing * 0.35).toArray(runQuats['footR.quaternion'], runQuats['footR.quaternion'].length);
+            rotateArm(Q.uaL, -1.18, swing * 0.85).toArray(runQuats['upper_armL.quaternion'], runQuats['upper_armL.quaternion'].length);
+            rotateArm(Q.uaR, 1.18, -swing * 0.85).toArray(runQuats['upper_armR.quaternion'], runQuats['upper_armR.quaternion'].length);
+            rotateBone(Q.faL, 1, 0, 0, 0.8 + Math.abs(swing) * 0.35).toArray(runQuats['forearmL.quaternion'], runQuats['forearmL.quaternion'].length);
+            rotateBone(Q.faR, 1, 0, 0, 0.8 + Math.abs(swing) * 0.35).toArray(runQuats['forearmR.quaternion'], runQuats['forearmR.quaternion'].length);
+            rotateBone(Q.spine, 1, 0, 0, 0.16).toArray(runQuats['spine.quaternion'], runQuats['spine.quaternion'].length);
+            rotateBone(Q.spine1, 0, 1, 0, swing * 0.14).toArray(runQuats['spine001.quaternion'], runQuats['spine001.quaternion'].length);
+            runSpinePos.push(0, -0.0394 + Math.abs(swing) * 0.09, -0.5765);
+        });
+        const runTracks = [];
+        for (const [k, v] of Object.entries(runQuats)) runTracks.push(new THREE.QuaternionKeyframeTrack(k, runTimes, v));
+        runTracks.push(new THREE.VectorKeyframeTrack('spine.position', runTimes, runSpinePos));
+        const clipRun = new THREE.AnimationClip('run', runDuration, runTracks);
+
+        // 3. PUNCH CLIP
+        const punchDuration = 0.35;
+        const punchFrames = 9;
+        const punchTimes = [];
+        for (let i = 0; i < punchFrames; i++) punchTimes.push((i / (punchFrames - 1)) * punchDuration);
+        const punchQuats = {
+            'thighL.quaternion': [], 'thighR.quaternion': [],
+            'shinL.quaternion': [], 'shinR.quaternion': [],
+            'upper_armL.quaternion': [], 'upper_armR.quaternion': [],
+            'forearmL.quaternion': [], 'forearmR.quaternion': [],
+            'spine.quaternion': []
+        };
+        const punchSpinePos = [];
+        punchTimes.forEach(t => {
+            const phase = (t / punchDuration) * Math.PI * 2;
+            const punch = Math.sin(phase);
+            rotateBone(Q.thighL, 1, 0, 0, -0.3).toArray(punchQuats['thighL.quaternion'], punchQuats['thighL.quaternion'].length);
+            rotateBone(Q.thighR, 1, 0, 0, 0.3).toArray(punchQuats['thighR.quaternion'], punchQuats['thighR.quaternion'].length);
+            rotateBone(Q.shinL, 1, 0, 0, 0.4).toArray(punchQuats['shinL.quaternion'], punchQuats['shinL.quaternion'].length);
+            rotateBone(Q.shinR, 1, 0, 0, 0.4).toArray(punchQuats['shinR.quaternion'], punchQuats['shinR.quaternion'].length);
+            rotateArm(Q.uaL, -0.7, 0.6 + punch * 0.95).toArray(punchQuats['upper_armL.quaternion'], punchQuats['upper_armL.quaternion'].length);
+            rotateArm(Q.uaR, 0.7, 0.6 - punch * 0.95).toArray(punchQuats['upper_armR.quaternion'], punchQuats['upper_armR.quaternion'].length);
+            rotateBone(Q.faL, 1, 0, 0, 0.85 + punch * 0.45).toArray(punchQuats['forearmL.quaternion'], punchQuats['forearmL.quaternion'].length);
+            rotateBone(Q.faR, 1, 0, 0, 0.85 - punch * 0.45).toArray(punchQuats['forearmR.quaternion'], punchQuats['forearmR.quaternion'].length);
+            rotateBone(Q.spine, 1, 0, 0, 0.22).toArray(punchQuats['spine.quaternion'], punchQuats['spine.quaternion'].length);
+            punchSpinePos.push(0, -0.0394 + Math.abs(punch) * 0.04, -0.5765);
+        });
+        const punchTracks = [];
+        for (const [k, v] of Object.entries(punchQuats)) punchTracks.push(new THREE.QuaternionKeyframeTrack(k, punchTimes, v));
+        punchTracks.push(new THREE.VectorKeyframeTrack('spine.position', punchTimes, punchSpinePos));
+        const clipPunch = new THREE.AnimationClip('punch', punchDuration, punchTracks);
+
+        // 4. VICTORY CLIP
+        const winDuration = 1.0;
+        const winFrames = 9;
+        const winTimes = [];
+        for (let i = 0; i < winFrames; i++) winTimes.push((i / (winFrames - 1)) * winDuration);
+        const winQuats = {
+            'thighL.quaternion': [], 'thighR.quaternion': [],
+            'shinL.quaternion': [], 'shinR.quaternion': [],
+            'upper_armL.quaternion': [], 'upper_armR.quaternion': [],
+            'forearmL.quaternion': [], 'forearmR.quaternion': [],
+            'spine.quaternion': []
+        };
+        const winSpinePos = [];
+        winTimes.forEach(t => {
+            const jump = Math.sin((t / winDuration) * Math.PI * 2);
+            rotateBone(Q.thighL, 1, 0, 0, 0.1).toArray(winQuats['thighL.quaternion'], winQuats['thighL.quaternion'].length);
+            rotateBone(Q.thighR, 1, 0, 0, 0.1).toArray(winQuats['thighR.quaternion'], winQuats['thighR.quaternion'].length);
+            rotateBone(Q.shinL, 1, 0, 0, 0.2).toArray(winQuats['shinL.quaternion'], winQuats['shinL.quaternion'].length);
+            rotateBone(Q.shinR, 1, 0, 0, 0.2).toArray(winQuats['shinR.quaternion'], winQuats['shinR.quaternion'].length);
+            rotateArm(Q.uaL, 0.8, 0.3 + jump * 0.3).toArray(winQuats['upper_armL.quaternion'], winQuats['upper_armL.quaternion'].length);
+            rotateArm(Q.uaR, -0.8, 0.3 + jump * 0.3).toArray(winQuats['upper_armR.quaternion'], winQuats['upper_armR.quaternion'].length);
+            rotateBone(Q.faL, 1, 0, 0, 0.3).toArray(winQuats['forearmL.quaternion'], winQuats['forearmL.quaternion'].length);
+            rotateBone(Q.faR, 1, 0, 0, 0.3).toArray(winQuats['forearmR.quaternion'], winQuats['forearmR.quaternion'].length);
+            rotateBone(Q.spine, 1, 0, 0, -0.05).toArray(winQuats['spine.quaternion'], winQuats['spine.quaternion'].length);
+            winSpinePos.push(0, -0.0394 + Math.max(0, jump) * 0.25, -0.5765);
+        });
+        const winTracks = [];
+        for (const [k, v] of Object.entries(winQuats)) winTracks.push(new THREE.QuaternionKeyframeTrack(k, winTimes, v));
+        winTracks.push(new THREE.VectorKeyframeTrack('spine.position', winTimes, winSpinePos));
+        const clipWin = new THREE.AnimationClip('win', winDuration, winTracks);
+
+        return { idle: clipIdle, run: clipRun, punch: clipPunch, win: clipWin };
+    }
+
     updateSquadMembers(delta) {
         const isRunning = this.isGameActive && !this.isLevelFinished;
-        const isPunching = this.isAttacking;
-
+        const isPunching = this.isAttacking && isRunning;
         const turnTilt = (this.targetPlayerX - this.playerX) * 0.12;
 
+        let targetActionName = 'idle';
+        if (this.isLevelFinished) {
+            targetActionName = 'win';
+        } else if (isPunching) {
+            targetActionName = 'punch';
+        } else if (isRunning) {
+            targetActionName = 'run';
+        }
+
+        const minGreenX = -4.35; // Right fence boundary on green track
+        const maxGreenX = 2.05;  // Left border boundary on green track
+
         this.squad.forEach((member, i) => {
-            const targetX = this.playerX + member.targetOffsetX;
+            // Dynamic edge compression:
+            // When close to an edge, squeeze runners on the outer side inward
+            let offX = member.targetOffsetX;
+            if (offX > 0) {
+                const availLeft = Math.max(0.1, maxGreenX - this.playerX);
+                if (offX > availLeft - 0.25) {
+                    offX = THREE.MathUtils.lerp(availLeft - 0.25, offX, 0.2);
+                }
+            } else if (offX < 0) {
+                const availRight = Math.max(0.1, this.playerX - minGreenX);
+                if (-offX > availRight - 0.25) {
+                    offX = -THREE.MathUtils.lerp(availRight - 0.25, -offX, 0.2);
+                }
+            }
+
+            let targetX = this.playerX + offX;
+            targetX = THREE.MathUtils.clamp(targetX, minGreenX, maxGreenX);
             const targetZ = this.playerZ + member.targetOffsetZ;
 
-            member.model.position.x += (targetX - member.model.position.x) * 12 * delta;
+            member.model.position.x += (targetX - member.model.position.x) * 14 * delta;
+            member.model.position.x = THREE.MathUtils.clamp(member.model.position.x, minGreenX, maxGreenX);
             member.model.position.z += (targetZ - member.model.position.z) * 14 * delta;
 
             member.model.rotation.z = -turnTilt;
             member.model.rotation.y = turnTilt * 0.6;
 
-            const b = member.bones;
-            if (b) {
-                const runFreq = 14;
-                const legSwing = Math.sin((this.animTime + member.animOffset) * runFreq);
-
-                if (isRunning) {
-                    if (b['thigh.L']) b['thigh.L'].rotation.x = legSwing * 0.75;
-                    if (b['thigh.R']) b['thigh.R'].rotation.x = -legSwing * 0.75;
-                    if (b['shin.L']) b['shin.L'].rotation.x = Math.max(0, -legSwing) * 0.85;
-                    if (b['shin.R']) b['shin.R'].rotation.x = Math.max(0, legSwing) * 0.85;
-
-                    if (b['spine']) {
-                        b['spine'].position.y = -0.04 + Math.abs(legSwing) * 0.08;
-                    }
-
-                    if (isPunching) {
-                        const punchSwing = Math.sin((this.animTime + member.punchPhase) * 22);
-                        if (b['upper_arm.L']) b['upper_arm.L'].rotation.x = -0.5 + punchSwing * 0.8;
-                        if (b['upper_arm.R']) b['upper_arm.R'].rotation.x = -0.5 - punchSwing * 0.8;
-                    } else {
-                        if (b['upper_arm.L']) b['upper_arm.L'].rotation.x = -legSwing * 0.7;
-                        if (b['upper_arm.R']) b['upper_arm.R'].rotation.x = legSwing * 0.7;
-                        if (b['forearm.L']) b['forearm.L'].rotation.x = 0.3;
-                        if (b['forearm.R']) b['forearm.R'].rotation.x = 0.3;
-                    }
-                } else {
-                    const breath = Math.sin(this.animTime * 3.0) * 0.04;
-                    if (b['upper_arm.L']) {
-                        b['upper_arm.L'].rotation.x = 0.25 + breath;
-                        b['upper_arm.L'].rotation.z = -0.22;
-                    }
-                    if (b['upper_arm.R']) {
-                        b['upper_arm.R'].rotation.x = 0.25 + breath;
-                        b['upper_arm.R'].rotation.z = 0.22;
-                    }
-                    if (b['forearm.L']) b['forearm.L'].rotation.x = 0.45;
-                    if (b['forearm.R']) b['forearm.R'].rotation.x = 0.45;
-                    if (b['thigh.L']) b['thigh.L'].rotation.x = 0;
-                    if (b['thigh.R']) b['thigh.R'].rotation.x = 0;
-                    if (b['shin.L']) b['shin.L'].rotation.x = 0.04;
-                    if (b['shin.R']) b['shin.R'].rotation.x = 0.04;
-                    if (b['spine']) b['spine'].position.y = -0.04 + breath * 0.5;
+            // Transition Animation state smoothly with AnimationMixer
+            if (member.currentAction !== targetActionName) {
+                const prev = member.actions[member.currentAction];
+                const next = member.actions[targetActionName];
+                if (prev && next) {
+                    prev.fadeOut(0.14);
+                    next.reset().fadeIn(0.14).play();
                 }
+                member.currentAction = targetActionName;
+            }
+
+            if (member.mixer) {
+                member.mixer.update(delta);
             }
         });
     }
@@ -1074,24 +1235,23 @@ export class Game3D {
             return;
         }
 
-        // Fixed camera X angle and position (locks camera perspective down center of runway)
+        const squadExtra = Math.min(3.2, (this.squad.length - 1) * 0.12);
         const fixedCamX = -0.8;
-        const fixedCamY = 6.0;
-        const targetCamZ = this.playerZ - 9.5;
+        const targetCamY = 7.2 + squadExtra * 0.4;
+        const targetCamZ = this.playerZ - (12.5 + squadExtra);
 
         this.camera.position.x = fixedCamX;
-        this.camera.position.y = fixedCamY;
+        this.camera.position.y += (targetCamY - this.camera.position.y) * 4.0 * delta;
         this.camera.position.z = targetCamZ;
 
-        // Camera looks straight ahead down the track, unaffected by player left-right steering
         const lookTarget = new THREE.Vector3(
             fixedCamX,
-            1.6,
-            this.playerZ + 10.0
+            1.4,
+            this.playerZ + 12.0
         );
         this.camera.lookAt(lookTarget);
 
-        this.dirLight.position.set(-16, 32, this.playerZ - 15);
+        this.dirLight.position.set(-16, 32, this.playerZ - 18);
         this.dirLight.target.position.set(fixedCamX, 0, this.playerZ + 10);
     }
 

@@ -62,6 +62,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     create() {
+        this.cameras.main.setBackgroundColor('rgba(0,0,0,0)');
         this.w = this.cameras.main.width;
         this.h = this.cameras.main.height;
         this.centerX = this.w / 2;
@@ -75,6 +76,13 @@ export class GameScene extends Phaser.Scene {
 
         this.initWebAudioSynth();
 
+        if (this.game && this.game.canvas) {
+            this.game.canvas.style.position = 'absolute';
+            this.game.canvas.style.top = '0';
+            this.game.canvas.style.left = '0';
+            this.game.canvas.style.zIndex = '10';
+        }
+
         // Initialize 3D Engine with Model Skin_BF14.glb & Gate multipliers
         const container = document.getElementById('game-container');
         this.game3d = new Game3D(container, {
@@ -85,17 +93,24 @@ export class GameScene extends Phaser.Scene {
             onLevelComplete: () => this.handleVictory()
         });
 
-        // Create UI Layers matching screenshot
-        this.createTopHUD();
-        this.createLeftProgressHUD();
-        this.createBottomBanner();
-        this.createSquadCounterBadge();
+        // Keep only tutorial drag hint during gameplay; keep UI win screen intact
         this.createTutorialHint();
 
-        // Input listener
-        this.input.on('pointerdown', () => {
+        // Input listeners
+        this.input.on('pointerdown', (pointer) => {
             if (!this.gameStarted) {
                 this.startGame();
+            }
+            if (this.game3d) {
+                this.game3d.isGameActive = true;
+            }
+        });
+
+        this.input.on('pointermove', (pointer) => {
+            if (pointer.isDown && this.game3d) {
+                this.game3d.isGameActive = true;
+                const normX = (pointer.x - this.centerX) / (this.w * 0.45);
+                this.game3d.targetPlayerX = Phaser.Math.Clamp(-1.2 - normX * 3.4, this.game3d.minPlayerX, this.game3d.maxPlayerX);
             }
         });
     }
@@ -318,7 +333,7 @@ export class GameScene extends Phaser.Scene {
         if (!this.progressFill) return;
         const barW = 24;
         const barH = 254;
-        const fillH = THREE.MathUtils.clamp(ratio * barH, 12, barH);
+        const fillH = Phaser.Math.Clamp(ratio * barH, 12, barH);
 
         this.progressFill.clear();
         this.progressFill.fillStyle(0x22c55e, 0.95);
