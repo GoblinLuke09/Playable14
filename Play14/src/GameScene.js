@@ -36,19 +36,6 @@ export class GameScene extends Phaser.Scene {
         coinG.strokeCircle(16, 16, 13);
         coinG.generateTexture('icon_coin', 32, 32);
 
-        // Generate diamond icon texture
-        const diaG = this.make.graphics({ x: 0, y: 0, add: false });
-        diaG.fillStyle(0xa855f7, 1);
-        diaG.beginPath();
-        diaG.moveTo(16, 2);
-        diaG.lineTo(30, 12);
-        diaG.lineTo(16, 30);
-        diaG.lineTo(2, 12);
-        diaG.closePath();
-        diaG.fillPath();
-        diaG.lineStyle(2, 0xffffff, 0.8);
-        diaG.strokePath();
-        diaG.generateTexture('icon_diamond', 32, 32);
 
         // Generate tutorial finger texture
         const fingerG = this.make.graphics({ x: 0, y: 0, add: false });
@@ -83,17 +70,18 @@ export class GameScene extends Phaser.Scene {
             this.game.canvas.style.zIndex = '10';
         }
 
-        // Initialize 3D Engine with Model Skin_BF14.glb & Gate multipliers
+        // Initialize 3D Engine with Model Skin_BF14.glb & shooter runner mechanics
         const container = document.getElementById('game-container');
         this.game3d = new Game3D(container, {
             onHit: (data) => this.handleHit(data),
-            onProgress: (ratio) => this.updateProgressBar(ratio),
+            onShoot: () => this.handleShoot(),
+            onPowerUp: (data) => this.handlePowerUp(data),
             onSquadCountChange: (count) => this.handleSquadCountChange(count),
             onCoinCollect: (data) => this.handleCoinCollect(data),
             onLevelComplete: () => this.handleVictory()
         });
 
-        // Keep only tutorial drag hint during gameplay; keep UI win screen intact
+        // Tutorial drag hint during start (Only UI kept)
         this.createTutorialHint();
 
         // Input listeners
@@ -110,7 +98,7 @@ export class GameScene extends Phaser.Scene {
             if (pointer.isDown && this.game3d) {
                 this.game3d.isGameActive = true;
                 const normX = (pointer.x - this.centerX) / (this.w * 0.45);
-                this.game3d.targetPlayerX = Phaser.Math.Clamp(-1.2 - normX * 3.4, this.game3d.minPlayerX, this.game3d.maxPlayerX);
+                this.game3d.targetPlayerX = Phaser.Math.Clamp(-1.0 - normX * 3.6, this.game3d.minPlayerX, this.game3d.maxPlayerX);
             }
         });
     }
@@ -135,14 +123,28 @@ export class GameScene extends Phaser.Scene {
         const ctx = this.audioCtx;
         const now = ctx.currentTime;
 
-        if (type === 'chop') {
+        if (type === 'laser') {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(680, now);
+            osc.frequency.exponentialRampToValueAtTime(160, now + 0.05);
+
+            gain.gain.setValueAtTime(0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.06);
+        } else if (type === 'chop') {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'triangle';
-            osc.frequency.setValueAtTime(180 + Math.random() * 50, now);
-            osc.frequency.exponentialRampToValueAtTime(45, now + 0.08);
+            osc.frequency.setValueAtTime(220 + Math.random() * 50, now);
+            osc.frequency.exponentialRampToValueAtTime(55, now + 0.08);
 
-            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.setValueAtTime(0.28, now);
             gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
 
             osc.connect(gain);
@@ -163,235 +165,29 @@ export class GameScene extends Phaser.Scene {
             gain.connect(ctx.destination);
             osc.start(now);
             osc.stop(now + 0.23);
-        } else if (type === 'gate') {
-            [440, 554.37, 659.25, 880].forEach((freq, i) => {
+        } else if (type === 'gate' || type === 'powerup') {
+            [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
                 const osc = ctx.createOscillator();
                 const gain = ctx.createGain();
                 osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, now + i * 0.05);
+                osc.frequency.setValueAtTime(freq, now + i * 0.04);
 
-                gain.gain.setValueAtTime(0.2, now + i * 0.05);
-                gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.05 + 0.25);
+                gain.gain.setValueAtTime(0.2, now + i * 0.04);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.04 + 0.22);
 
                 osc.connect(gain);
                 gain.connect(ctx.destination);
-                osc.start(now + i * 0.05);
-                osc.stop(now + i * 0.05 + 0.26);
+                osc.start(now + i * 0.04);
+                osc.stop(now + i * 0.04 + 0.23);
             });
         }
-    }
-
-    createTopHUD() {
-        const topY = 48;
-
-        // 1. Level 10 Badge (Top Left)
-        const lvlContainer = this.add.container(65, topY);
-        const lvlBg = this.add.graphics();
-        lvlBg.fillStyle(0x000000, 0.35);
-        lvlBg.fillRoundedRect(-48, -16, 96, 32, 16);
-        lvlBg.lineStyle(2, 0xffffff, 0.3);
-        lvlBg.strokeRoundedRect(-48, -16, 96, 32, 16);
-        lvlContainer.add(lvlBg);
-
-        const lvlText = this.add.text(0, 0, 'Level 10', {
-            fontFamily: '"Arial Black", Arial, sans-serif',
-            fontSize: '17px',
-            color: '#ffffff',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-        lvlContainer.add(lvlText);
-
-        // 2. Coin Badge (Top Right)
-        const coinContainer = this.add.container(this.w - 65, topY - 14);
-        const coinBg = this.add.graphics();
-        coinBg.fillStyle(0xffffff, 0.9);
-        coinBg.fillRoundedRect(-45, -13, 90, 26, 13);
-        coinBg.lineStyle(2, 0x4a4a4a, 0.8);
-        coinBg.strokeRoundedRect(-45, -13, 90, 26, 13);
-        coinContainer.add(coinBg);
-
-        const coinIcon = this.add.image(32, 0, 'icon_coin').setDisplaySize(24, 24);
-        coinContainer.add(coinIcon);
-
-        this.coinText = this.add.text(-10, 0, '8K8', {
-            fontFamily: '"Arial Black", Arial, sans-serif',
-            fontSize: '15px',
-            color: '#1e1e1e',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-        coinContainer.add(this.coinText);
-
-        // 3. Diamond Badge (Top Right, below coin)
-        const diaContainer = this.add.container(this.w - 65, topY + 18);
-        const diaBg = this.add.graphics();
-        diaBg.fillStyle(0xffffff, 0.9);
-        diaBg.fillRoundedRect(-45, -13, 90, 26, 13);
-        diaBg.lineStyle(2, 0x4a4a4a, 0.8);
-        diaBg.strokeRoundedRect(-45, -13, 90, 26, 13);
-        diaContainer.add(diaBg);
-
-        const diaIcon = this.add.image(32, 0, 'icon_diamond').setDisplaySize(22, 22);
-        diaContainer.add(diaIcon);
-
-        this.diaText = this.add.text(-10, 0, '400', {
-            fontFamily: '"Arial Black", Arial, sans-serif',
-            fontSize: '15px',
-            color: '#1e1e1e',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
-        diaContainer.add(this.diaText);
-    }
-
-    createSquadCounterBadge() {
-        // Floating Squad Count indicator
-        this.squadBadgeContainer = this.add.container(this.centerX, 110);
-
-        const bg = this.add.graphics();
-        bg.fillStyle(0x0284c7, 0.85);
-        bg.fillRoundedRect(-50, -18, 100, 36, 18);
-        bg.lineStyle(3, 0xffffff, 0.95);
-        bg.strokeRoundedRect(-50, -18, 100, 36, 18);
-        this.squadBadgeContainer.add(bg);
-
-        this.squadBadgeText = this.add.text(0, 0, '👥 1', {
-            fontFamily: '"Arial Black", Impact, sans-serif',
-            fontSize: '20px',
-            color: '#ffffff'
-        }).setOrigin(0.5);
-        this.squadBadgeContainer.add(this.squadBadgeText);
-    }
-
-    createLeftProgressHUD() {
-        const barX = 38;
-        const barY = this.h * 0.42;
-        const barW = 28;
-        const barH = 260;
-
-        this.progressContainer = this.add.container(barX, barY);
-
-        // Background Track Capsule
-        const bgG = this.add.graphics();
-        bgG.fillStyle(0x1e293b, 0.7);
-        bgG.fillRoundedRect(-barW / 2, -barH / 2, barW, barH, 14);
-        bgG.lineStyle(3, 0xffffff, 0.9);
-        bgG.strokeRoundedRect(-barW / 2, -barH / 2, barW, barH, 14);
-        this.progressContainer.add(bgG);
-
-        // Green Liquid Fill
-        this.progressFill = this.add.graphics();
-        this.progressContainer.add(this.progressFill);
-
-        // Checkpoint 1 (Bottom)
-        const cp1 = this.add.container(0, barH / 2 - 15);
-        const c1Bg = this.add.graphics();
-        c1Bg.fillStyle(0x38bdf8, 1);
-        c1Bg.fillCircle(0, 0, 16);
-        c1Bg.lineStyle(2, 0xffffff, 1);
-        c1Bg.strokeCircle(0, 0, 16);
-        const c1Text = this.add.text(12, 0, '1', {
-            fontFamily: '"Arial Black", Arial, sans-serif',
-            fontSize: '18px',
-            color: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 3
-        }).setOrigin(0, 0.5);
-        cp1.add([c1Bg, c1Text]);
-        this.progressContainer.add(cp1);
-
-        // Checkpoint 2 (Middle)
-        const cp2 = this.add.container(0, -barH * 0.1);
-        const c2Bg = this.add.graphics();
-        c2Bg.fillStyle(0x1d4ed8, 1);
-        c2Bg.fillCircle(0, 0, 16);
-        c2Bg.lineStyle(2, 0xffffff, 1);
-        c2Bg.strokeCircle(0, 0, 16);
-        const c2Text = this.add.text(12, 0, '2', {
-            fontFamily: '"Arial Black", Arial, sans-serif',
-            fontSize: '18px',
-            color: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 3
-        }).setOrigin(0, 0.5);
-        cp2.add([c2Bg, c2Text]);
-        this.progressContainer.add(cp2);
-
-        // Crown at top
-        const cpTop = this.add.container(0, -barH / 2 + 15);
-        const topBg = this.add.graphics();
-        topBg.fillStyle(0xf59e0b, 1);
-        topBg.fillCircle(0, 0, 15);
-        topBg.lineStyle(2, 0xffffff, 1);
-        topBg.strokeCircle(0, 0, 15);
-        const topIcon = this.add.text(0, 0, '👑', { fontSize: '15px' }).setOrigin(0.5);
-        cpTop.add([topBg, topIcon]);
-        this.progressContainer.add(cpTop);
-
-        this.updateProgressBar(0.05);
-    }
-
-    updateProgressBar(ratio) {
-        if (!this.progressFill) return;
-        const barW = 24;
-        const barH = 254;
-        const fillH = Phaser.Math.Clamp(ratio * barH, 12, barH);
-
-        this.progressFill.clear();
-        this.progressFill.fillStyle(0x22c55e, 0.95);
-        this.progressFill.fillRoundedRect(
-            -barW / 2,
-            barH / 2 - fillH,
-            barW,
-            fillH,
-            12
-        );
-    }
-
-    createBottomBanner() {
-        const bannerContainer = this.add.container(this.centerX, this.h - 55);
-
-        const bannerW = this.w * 0.92;
-        const bannerH = 68;
-
-        const bgG = this.add.graphics();
-        // Shadow
-        bgG.fillStyle(0x0284c7, 0.7);
-        bgG.fillRoundedRect(-bannerW / 2 + 3, -bannerH / 2 + 6, bannerW, bannerH, 12);
-
-        // Main Sky Blue Fill
-        bgG.fillStyle(0x38bdf8, 1);
-        bgG.fillRoundedRect(-bannerW / 2, -bannerH / 2, bannerW, bannerH, 12);
-
-        // White border
-        bgG.lineStyle(4, 0xffffff, 1);
-        bgG.strokeRoundedRect(-bannerW / 2, -bannerH / 2, bannerW, bannerH, 12);
-        bannerContainer.add(bgG);
-
-        const bannerText = this.add.text(0, 0, 'COLLECT BOOSTS', {
-            fontFamily: '"Arial Black", Impact, sans-serif',
-            fontSize: '30px',
-            color: '#ffffff',
-            stroke: '#0369a1',
-            strokeThickness: 8,
-            shadow: { offsetX: 2, offsetY: 3, color: '#0c4a6e', blur: 0, stroke: true, fill: true }
-        }).setOrigin(0.5);
-        bannerContainer.add(bannerText);
-
-        this.tweens.add({
-            targets: bannerContainer,
-            scaleX: 1.04,
-            scaleY: 1.04,
-            duration: 900,
-            yoyo: true,
-            repeat: -1,
-            ease: 'Sine.easeInOut'
-        });
     }
 
     createTutorialHint() {
         this.tutorialGroup = this.add.container(this.centerX, this.h * 0.76);
 
         const hand = this.add.image(0, 0, 'icon_hand').setScale(1.3);
-        const text = this.add.text(0, 42, 'DRAG TO RUN & SMASH!', {
+        const text = this.add.text(0, 42, 'DRAG TO AIM & SHOOT!', {
             fontFamily: '"Arial Black", Arial, sans-serif',
             fontSize: '20px',
             color: '#ffffff',
@@ -427,9 +223,22 @@ export class GameScene extends Phaser.Scene {
         }
     }
 
+    handleShoot() {
+        this.playSynthSound('laser');
+    }
+
     handleHit(data) {
         this.playSynthSound('chop');
-        this.cameras.main.shake(50, 0.003);
+        this.cameras.main.shake(40, 0.002);
+    }
+
+    handlePowerUp(data) {
+        this.playSynthSound('powerup');
+        if (data.type === 'gun') {
+            this.showFloatPopup('AK-47 UNLOCKED! 🔥', 0xfacc15);
+        } else if (data.type === 'gate') {
+            this.showFloatPopup(`+${data.val} FIREPOWER! ⚡`, 0x38bdf8);
+        }
     }
 
     handleSquadCountChange(count) {
