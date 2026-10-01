@@ -88,14 +88,15 @@ export class GameScene extends Phaser.Scene {
         this.input.on('pointerdown', (pointer) => {
             if (!this.gameStarted) {
                 this.startGame();
+                            // Notify Playturbo
+                if (typeof window.gameReady === 'function') {
+                    window.gameReady();
+                }
             }
             if (this.game3d) {
                 this.game3d.isGameActive = true;
             }
-            // Notify Playturbo
-            if (typeof window.gameReady === 'function') {
-                window.gameReady();
-            }
+
 
         });
 
