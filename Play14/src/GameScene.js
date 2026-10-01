@@ -91,6 +91,9 @@ export class GameScene extends Phaser.Scene {
             onProgress: (ratio) => this.updateProgressBar(ratio),
             onSquadCountChange: (count) => this.handleSquadCountChange(count),
             onCoinCollect: (data) => this.handleCoinCollect(data),
+            onTierUpgrade: (tier) => this.handleTierUpgrade(tier),
+            onLevelTransition: (lv) => this.handleLevelTransition(lv),
+            onLevelStart: (lv) => this.handleLevelStart(lv),
             onLevelComplete: () => this.handleVictory(),
             onGameOver: () => this.handleDefeat()
         });
@@ -309,6 +312,163 @@ export class GameScene extends Phaser.Scene {
             this.coinText.setText(`${(this.coins / 1000).toFixed(1)}K`);
         }
         this.playSynthSound('coin');
+    }
+
+    handleTierUpgrade(tier) {
+        if (tier <= 0) return;
+        this.playSynthSound('gate');
+
+        const tierNames = [
+            'STARTER CANNON',
+            '🔥 DUAL CANNON! (+1 MOB)',
+            '⚡ TRIPLE CANNON! (+1 MOB)',
+            '🚀 SUPER JET! (+1 MOB)'
+        ];
+        const title = tierNames[tier] || `TIER ${tier} UPGRADE!`;
+
+        const banner = this.add.container(this.centerX, this.h * 0.28);
+        banner.setDepth(200);
+
+        const bg = this.add.graphics();
+        bg.fillStyle(0x0f172a, 0.92);
+        bg.fillRoundedRect(-160, -24, 320, 48, 24);
+        bg.lineStyle(3, 0xfacc15, 1);
+        bg.strokeRoundedRect(-160, -24, 320, 48, 24);
+        banner.add(bg);
+
+        const text = this.add.text(0, 0, title, {
+            fontFamily: '"Arial Black", Impact, sans-serif',
+            fontSize: '18px',
+            color: '#facc15',
+            stroke: '#78350f',
+            strokeThickness: 4
+        }).setOrigin(0.5);
+        banner.add(text);
+
+        banner.setScale(0.3);
+        banner.setAlpha(0);
+
+        this.tweens.add({
+            targets: banner,
+            scaleX: 1.05,
+            scaleY: 1.05,
+            alpha: 1,
+            duration: 250,
+            ease: 'Back.easeOut',
+            onComplete: () => {
+                this.tweens.add({
+                    targets: banner,
+                    y: this.h * 0.22,
+                    alpha: 0,
+                    scaleX: 0.9,
+                    scaleY: 0.9,
+                    duration: 500,
+                    delay: 900,
+                    ease: 'Power2',
+                    onComplete: () => banner.destroy()
+                });
+            }
+        });
+    }
+
+    handleLevelTransition(lv) {
+        try {
+            this.sound.play('sfx_complete');
+        } catch (e) {
+            this.playSynthSound('gate');
+        }
+
+        this.createConfetti();
+
+        const banner = this.add.container(this.centerX, this.centerY - 40);
+        banner.setDepth(300);
+
+        const bg = this.add.graphics();
+        bg.fillStyle(0x0f172a, 0.95);
+        bg.fillRoundedRect(-175, -45, 350, 90, 20);
+        bg.lineStyle(4, 0x22c55e, 1);
+        bg.strokeRoundedRect(-175, -45, 350, 90, 20);
+        banner.add(bg);
+
+        const txt1 = this.add.text(0, -14, '⭐ LEVEL 1 CLEARED! ⭐', {
+            fontFamily: '"Arial Black", Impact, sans-serif',
+            fontSize: '22px',
+            color: '#4ade80',
+            stroke: '#064e3b',
+            strokeThickness: 5
+        }).setOrigin(0.5);
+
+        const txt2 = this.add.text(0, 18, 'ADVANCING TO NEXT LEVEL...', {
+            fontFamily: '"Arial Black", sans-serif',
+            fontSize: '14px',
+            color: '#facc15'
+        }).setOrigin(0.5);
+
+        banner.add([txt1, txt2]);
+        banner.setScale(0.2);
+
+        this.tweens.add({
+            targets: banner,
+            scaleX: 1.05,
+            scaleY: 1.05,
+            duration: 350,
+            ease: 'Back.easeOut',
+            onComplete: () => {
+                this.tweens.add({
+                    targets: banner,
+                    alpha: 0,
+                    scaleX: 0.8,
+                    scaleY: 0.8,
+                    duration: 400,
+                    delay: 1400,
+                    ease: 'Power2',
+                    onComplete: () => banner.destroy()
+                });
+            }
+        });
+    }
+
+    handleLevelStart(lv) {
+        this.playSynthSound('coin');
+
+        const banner = this.add.container(this.centerX, this.h * 0.26);
+        banner.setDepth(300);
+
+        const bg = this.add.graphics();
+        bg.fillStyle(0x7f1d1d, 0.95);
+        bg.fillRoundedRect(-180, -32, 360, 64, 18);
+        bg.lineStyle(3, 0xef4444, 1);
+        bg.strokeRoundedRect(-180, -32, 360, 64, 18);
+        banner.add(bg);
+
+        const txt = this.add.text(0, 0, '⚠️ LEVEL 2: HARDCORE BOSS WAVE!', {
+            fontFamily: '"Arial Black", Impact, sans-serif',
+            fontSize: '17px',
+            color: '#ffffff',
+            stroke: '#450a0a',
+            strokeThickness: 5
+        }).setOrigin(0.5);
+        banner.add(txt);
+
+        banner.setScale(0.3);
+        this.tweens.add({
+            targets: banner,
+            scaleX: 1.0,
+            scaleY: 1.0,
+            duration: 300,
+            ease: 'Back.easeOut',
+            onComplete: () => {
+                this.tweens.add({
+                    targets: banner,
+                    y: this.h * 0.18,
+                    alpha: 0,
+                    duration: 450,
+                    delay: 1600,
+                    ease: 'Power2',
+                    onComplete: () => banner.destroy()
+                });
+            }
+        });
     }
 
     handleVictory() {
@@ -604,6 +764,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     ShowStore() {
+        
+        if (typeof window.gameEnd === 'function') {
+                    window.gameEnd();
+                }
+
         if (this.hasTriggeredStore) return;
         this.hasTriggeredStore = true;
 
