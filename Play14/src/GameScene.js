@@ -88,10 +88,16 @@ export class GameScene extends Phaser.Scene {
         this.input.on('pointerdown', (pointer) => {
             if (!this.gameStarted) {
                 this.startGame();
+                            // Notify Playturbo
+                if (typeof window.gameReady === 'function') {
+                    window.gameReady();
+                }
             }
             if (this.game3d) {
                 this.game3d.isGameActive = true;
             }
+
+
         });
 
         this.input.on('pointermove', (pointer) => {
@@ -100,10 +106,7 @@ export class GameScene extends Phaser.Scene {
                 const normX = (pointer.x - this.centerX) / (this.w * 0.45);
                 this.game3d.targetPlayerX = Phaser.Math.Clamp(-1.0 - normX * 3.6, this.game3d.minPlayerX, this.game3d.maxPlayerX);
 
-        // Notify Playturbo
-                if (typeof window.gameReady === 'function') {
-                    window.gameReady();
-                }
+
 
             }
         });
