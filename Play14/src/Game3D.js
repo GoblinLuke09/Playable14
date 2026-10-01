@@ -21,25 +21,26 @@ export class Game3D {
         this.isGameActive = false;
         this.isLevelFinished = false;
 
-        // Player is stationary at Z = 0; starts on Main Runner lane (x = -1.0, visually right)
+        // Player starts on Right lane (x = -1.0, visually right)
         this.playerX = -1.0;
         this.targetPlayerX = -1.0;
-        this.minPlayerX = -2.4; // Right lane boundary (visual right)
-        this.maxPlayerX = 2.8;  // Left lane boundary (visual left, to shoot Box 23)
-        this.playerZ = 0;       // Fixed Z position!
-        
-        // Right lane movement (moves normally from start)
+        this.minPlayerX = -2.7; // Right boundary inside railings
+        this.maxPlayerX = 3.5;  // Left boundary inside railings
+        this.playerZ = 4.5;     // Positioned closer forward in camera view
+
+        // Track movement
         this.distanceTravelled = 0;
-        this.worldSpeed = 7.5;
-        this.totalTrackLength = 205;
+        this.worldSpeed = 5.2; // Slower enemy movement
+        this.totalTrackLength = 180;
 
         // Left lane gate blocking mechanic
-        this.isBox23Destroyed = false; // Box 23 stays stationary blocking left gates
-        this.leftGatesDistance = 0;    // Left gates only start moving when Box 23 is destroyed!
+        this.isBox23Destroyed = false; // Box 3 stays stationary blocking left gates
+        this.leftGatesDistance = 0;    // Left gates only start moving when Box 3 is destroyed!
+        this.leftGatesSpeed = 13.5;    // High speed for fast booster gate rush!
 
         // Shooting stats
         this.fireTimer = 0;
-        this.fireInterval = 0.12;
+        this.fireInterval = 0.28; // Slower initial fire rate before getting the gun
         this.bulletPower = 1;
         this.bullets = [];
 
@@ -56,7 +57,7 @@ export class Game3D {
         this.particlesList = [];
         this.floatingTexts = [];
         this.floatingWeapons = [];
-        this.enemies = [];
+        this.redMinions = [];
         this.boxObstacles = [];
         this.gates = [];
         this.leftGates = [];
@@ -71,6 +72,7 @@ export class Game3D {
         this.createMountainEnvironment();
         this.createBridgeTracks();
         this.createCourseLayout();
+        this.setupInitialPlayer(); // Ensure runner with gun is visible on frame 1!
         this.loadPlayerModel();
         this.loadBossModel();
         this.setupEventListeners();
@@ -82,10 +84,10 @@ export class Game3D {
         this.scene.background = new THREE.Color(0x7da87d);
         this.scene.fog = new THREE.FogExp2(0x567c5e, 0.009);
 
-        // Fixed perspective camera behind stationary player looking down the bridge
-        this.camera = new THREE.PerspectiveCamera(52, this.width / this.height, 0.1, 400);
-        this.camera.position.set(0.6, 7.8, -10.5);
-        this.camera.lookAt(0.6, 1.2, 10.0);
+        // Perspective camera pulled further back behind player looking down the entire bridge track
+        this.camera = new THREE.PerspectiveCamera(50, this.width / this.height, 0.1, 400);
+        this.camera.position.set(0.4, 8.2, -10.5);
+        this.camera.lookAt(0.4, 1.3, 15.0);
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
         this.renderer.setSize(this.width, this.height);
@@ -202,69 +204,53 @@ export class Game3D {
     // BRIDGE TRACKS (In World Container)
     // -----------------------------------------------------------------
     createBridgeTracks() {
-        const trackLength = this.totalTrackLength + 50;
+        const trackLength = this.totalTrackLength + 80;
         this.trackGroup = new THREE.Group();
 
         const concreteRoadMat = new THREE.MeshStandardMaterial({
-            color: 0xadb3ba,
-            roughness: 0.85,
+            color: 0xb5bcc4,
+            roughness: 0.8,
             metalness: 0.05
         });
-        const edgeLineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
         const bridgeUndersideMat = new THREE.MeshStandardMaterial({
-            color: 0x6e737a,
+            color: 0x5a6068,
             roughness: 0.9
         });
+        const dashedLineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
-        // 1. Initial Roadway
-        const initRoadGeo = new THREE.BoxGeometry(6.6, 0.6, 40);
-        const initRoad = new THREE.Mesh(initRoadGeo, concreteRoadMat);
-        initRoad.position.set(0.6, -0.3, 0);
-        initRoad.receiveShadow = true;
-        this.trackGroup.add(initRoad);
-
-        [-2.4, 3.6].forEach(lx => {
-            const line = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 40), edgeLineMat);
-            line.rotation.x = -Math.PI / 2;
-            line.position.set(lx, 0.01, 0);
-            this.trackGroup.add(line);
-        });
-
-        // 2. Split Booster Track (VISUAL LEFT -> x = 2.2, width = 2.4)
-        const splitLen = trackLength - 20;
-        const boosterRoadGeo = new THREE.BoxGeometry(2.4, 0.6, splitLen);
-        const boosterRoad = new THREE.Mesh(boosterRoadGeo, concreteRoadMat);
-        boosterRoad.position.set(2.2, -0.3, 20 + splitLen / 2);
-        boosterRoad.receiveShadow = true;
-        this.trackGroup.add(boosterRoad);
-
-        [1.1, 3.3].forEach(lx => {
-            const line = new THREE.Mesh(new THREE.PlaneGeometry(0.08, splitLen), edgeLineMat);
-            line.rotation.x = -Math.PI / 2;
-            line.position.set(lx, 0.01, 20 + splitLen / 2);
-            this.trackGroup.add(line);
-        });
-
-        // 3. Split Main Runner Track (VISUAL RIGHT -> x = -1.0, width = 3.4)
-        const mainRoadGeo = new THREE.BoxGeometry(3.4, 0.6, splitLen);
+        // 1. Single Unified Bridge Road Deck (wider road deck from x = -3.0 to x = 3.8)
+        const roadWidth = 6.8;
+        const roadCenter = 0.4;
+        const mainRoadGeo = new THREE.BoxGeometry(roadWidth, 0.6, trackLength);
         const mainRoad = new THREE.Mesh(mainRoadGeo, concreteRoadMat);
-        mainRoad.position.set(-1.0, -0.3, 20 + splitLen / 2);
+        mainRoad.position.set(roadCenter, -0.3, trackLength / 2 - 20);
         mainRoad.receiveShadow = true;
         this.trackGroup.add(mainRoad);
 
-        [-2.6, 0.6].forEach(rx => {
-            const line = new THREE.Mesh(new THREE.PlaneGeometry(0.08, splitLen), edgeLineMat);
-            line.rotation.x = -Math.PI / 2;
-            line.position.set(rx, 0.01, 20 + splitLen / 2);
-            this.trackGroup.add(line);
-        });
+        // Dashed lane divider lines
+        const dashLength = 3.0;
+        const dashGap = 3.0;
+        const dashGeo = new THREE.PlaneGeometry(0.12, dashLength);
+        for (let z = -10; z < trackLength; z += (dashLength + dashGap)) {
+            // Center divider between Left and Right lane
+            const dashCenter = new THREE.Mesh(dashGeo, dashedLineMat);
+            dashCenter.rotation.x = -Math.PI / 2;
+            dashCenter.position.set(0.70, 0.01, z);
+            this.trackGroup.add(dashCenter);
+
+            // Right lane guide dash
+            const dashRight = new THREE.Mesh(dashGeo, dashedLineMat);
+            dashRight.rotation.x = -Math.PI / 2;
+            dashRight.position.set(-1.15, 0.01, z);
+            this.trackGroup.add(dashRight);
+        }
 
         // Underside pillars
-        const pillarGeo = new THREE.CylinderGeometry(0.7, 0.9, 20, 12);
-        for (let z = -10; z < trackLength; z += 28) {
-            [-1.0, 2.2].forEach(px => {
+        const pillarGeo = new THREE.CylinderGeometry(0.8, 1.0, 24, 12);
+        for (let z = -10; z < trackLength; z += 30) {
+            [-1.2, 2.0].forEach(px => {
                 const pillar = new THREE.Mesh(pillarGeo, bridgeUndersideMat);
-                pillar.position.set(px, -10.3, z);
+                pillar.position.set(px, -12.3, z);
                 pillar.castShadow = true;
                 pillar.receiveShadow = true;
                 this.trackGroup.add(pillar);
@@ -276,21 +262,17 @@ export class Game3D {
     }
 
     createBridgeRailings(trackLength) {
-        const postGeo = new THREE.BoxGeometry(0.18, 1.1, 0.18);
-        const railMat = new THREE.MeshStandardMaterial({ color: 0x8a9098, roughness: 0.7 });
-        const barMat = new THREE.MeshStandardMaterial({ color: 0x5c6168, roughness: 0.6 });
+        const postGeo = new THREE.BoxGeometry(0.16, 1.15, 0.16);
+        // Reddish-brown bridge railing material matching the image
+        const railMat = new THREE.MeshStandardMaterial({ color: 0x823838, roughness: 0.65 });
+        const barMat = new THREE.MeshStandardMaterial({ color: 0x6e2c2c, roughness: 0.6 });
 
-        this.buildRailingRun(-2.75, -15, trackLength, railMat, barMat, postGeo);
-        this.buildRailingRun(3.65, -15, trackLength, railMat, barMat, postGeo);
-        this.buildRailingRun(0.75, 20, trackLength, railMat, barMat, postGeo);
-        this.buildRailingRun(1.05, 20, trackLength, railMat, barMat, postGeo);
+        // Outer Railings
+        this.buildRailingRun(-2.95, -20, trackLength, railMat, barMat, postGeo);
+        this.buildRailingRun(3.75, -20, trackLength, railMat, barMat, postGeo);
 
-        // Entrance barrier on Booster split lane (Visual Left -> x = 2.2)
-        const barrierGeo = new THREE.BoxGeometry(1.3, 0.9, 0.1);
-        const barrierMat = new THREE.MeshStandardMaterial({ color: 0x555a60 });
-        this.leftBarrier = new THREE.Mesh(barrierGeo, barrierMat);
-        this.leftBarrier.position.set(2.2, 0.45, 21.5);
-        this.trackGroup.add(this.leftBarrier);
+        // Center Divider Railing separating Left Lane (+1 gates) and Right Lane (Enemies)
+        this.buildRailingRun(0.65, 16.0, trackLength, railMat, barMat, postGeo);
     }
 
     buildRailingRun(rx, startZ, endZ, railMat, barMat, postGeo) {
@@ -303,15 +285,19 @@ export class Game3D {
         midRail.position.set(rx, 0.45, startZ + len / 2);
         this.trackGroup.add(midRail);
 
+        const bottomRail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, len), railMat);
+        bottomRail.position.set(rx, 0.12, startZ + len / 2);
+        this.trackGroup.add(bottomRail);
+
         for (let z = startZ; z <= endZ; z += 3.2) {
             const post = new THREE.Mesh(postGeo, railMat);
-            post.position.set(rx, 0.55, z);
+            post.position.set(rx, 0.58, z);
             post.castShadow = true;
             this.trackGroup.add(post);
 
-            for (let subZ = z + 0.6; subZ < z + 3.0 && subZ < endZ; subZ += 0.6) {
+            for (let subZ = z + 0.5; subZ < z + 3.0 && subZ < endZ; subZ += 0.5) {
                 const bal = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.85, 6), barMat);
-                bal.position.set(rx, 0.5, subZ);
+                bal.position.set(rx, 0.55, subZ);
                 this.trackGroup.add(bal);
             }
         }
@@ -321,71 +307,40 @@ export class Game3D {
     // COURSE LAYOUT
     // -----------------------------------------------------------------
     createCourseLayout() {
-        // 1. VISUAL LEFT LANE (x = 2.2): Box 23 with AK-47 is STATIONARY at z = 25.5
-        const box23 = this.createNumberCrateStack({
-            x: 2.2,
-            z: 25.5,
-            width: 1.8,
-            height: 1.8,
-            depth: 1.5,
-            hp: 23,
-            label: '23',
-            hasWeapon: true,
+        // 1. VISUAL LEFT LANE: Box 3 with Gun (AK-47) is right at the head of the dividing railing (z = 16.0)
+        const box3 = this.createNumberCrateStack({
+            x: 2.20,
+            z: 16.0,
+            width: 2.9,
+            height: 1.0,
+            depth: 1.4,
+            hp: 3,
+            label: '3',
+            hasWeapon: true, // Gun floating on top of box 3!
             isStationary: true // Stays in place blocking left gates until destroyed!
         });
-        this.boxObstacles.push(box23);
+        this.boxObstacles.push(box3);
 
-        // Long row of +1 gates along left lane (moves ONLY after Box 23 is destroyed)
-        for (let z = 31; z <= 155; z += 3.2) {
-            const gate = this.createLeftBoosterGate(2.2, z, '+1');
+        // Densely packed continuous row of +1 gates along left lane starting right behind Box 3
+        for (let z = 18.2; z <= 260; z += 1.8) {
+            const gate = this.createLeftBoosterGate(2.20, z, '+1');
             this.leftGates.push(gate);
         }
 
-        // 2. VISUAL RIGHT LANE (x = -1.0): Gate "+7", Box "89", Blue Monster, Box "192", Gate "+10", Box "785" with Gun
-        const gate7 = this.createTranslucentGate(-1.0, 32, { type: 'add', val: 7, label: '+7' });
-        this.gates.push(gate7);
+        // 2. VISUAL RIGHT LANE: Colossal Swarm of Red Minions spread across entire lane width
+        // 350 red minions spread evenly from right railing to center dividing railing
+        const minionCount = 350;
+        for (let i = 0; i < minionCount; i++) {
+            const progress = i / minionCount;
+            // Dense Z progression in front of the boss
+            const z = 34 + progress * 88 + (Math.random() - 0.5) * 3.5;
+            // Spread across the full width of the right lane (from -2.72 to 0.42)
+            const x = -2.72 + Math.random() * 3.14;
+            this.spawnRedMinion(x, z, { hp: 2 });
+        }
 
-        const box89 = this.createNumberCrateStack({
-            x: -1.0,
-            z: 60,
-            width: 1.9,
-            height: 1.9,
-            depth: 1.5,
-            hp: 89,
-            label: '89'
-        });
-        this.boxObstacles.push(box89);
-
-        this.spawnEnemyGuard(-1.0, 74, { hp: 120, maxHp: 120 });
-
-        const box192 = this.createNumberCrateStack({
-            x: -1.0,
-            z: 94,
-            width: 1.9,
-            height: 1.9,
-            depth: 1.5,
-            hp: 192,
-            label: '192'
-        });
-        this.boxObstacles.push(box192);
-
-        // Gate +10 ahead
-        const gate10 = this.createTranslucentGate(-1.0, 116, { type: 'add', val: 10, label: '+10' });
-        this.gates.push(gate10);
-
-        const box785 = this.createNumberCrateStack({
-            x: -1.0,
-            z: 138,
-            width: 2.0,
-            height: 2.0,
-            depth: 1.6,
-            hp: 785,
-            label: '785',
-            hasWeapon: true
-        });
-        this.boxObstacles.push(box785);
-
-        this.createFinalBoss(185, { hp: 1500, maxHp: 1500 });
+        // Giant Red Boss standing at original position (z = 126) behind the red army
+        this.createFinalBoss(126, { hp: 38000, maxHp: 38000 });
     }
 
     createNumberCrateStack(config) {
@@ -396,40 +351,55 @@ export class Game3D {
         const height = config.height;
         const depth = config.depth;
 
-        const yellowMat = new THREE.MeshStandardMaterial({ color: 0xebb405, roughness: 0.35, metalness: 0.15 });
-        const yellowDarkMat = new THREE.MeshStandardMaterial({ color: 0xc99400, roughness: 0.45, metalness: 0.1 });
+        // Bright yellow block material matching the image
+        const yellowMat = new THREE.MeshStandardMaterial({
+            color: 0xfacc15,
+            roughness: 0.3,
+            metalness: 0.1
+        });
+        const yellowSideMat = new THREE.MeshStandardMaterial({
+            color: 0xeab308,
+            roughness: 0.35,
+            metalness: 0.1
+        });
 
-        const blockGeo = new THREE.BoxGeometry(width, height * 0.46, depth);
-        
-        const b1 = new THREE.Mesh(blockGeo, yellowMat);
-        b1.position.set(0, height * 0.23, 0);
-        b1.castShadow = true;
-        b1.receiveShadow = true;
-        group.add(b1);
+        const blockGeo = new THREE.BoxGeometry(width, height, depth);
+        const bMesh = new THREE.Mesh(blockGeo, [
+            yellowSideMat, yellowSideMat, // right, left
+            yellowMat, yellowSideMat,     // top, bottom
+            yellowMat, yellowSideMat      // front, back
+        ]);
+        bMesh.position.set(0, height / 2, 0);
+        bMesh.castShadow = true;
+        bMesh.receiveShadow = true;
+        group.add(bMesh);
 
-        const b2 = new THREE.Mesh(blockGeo, yellowDarkMat);
-        b2.position.set(0, height * 0.72, 0);
-        b2.castShadow = true;
-        b2.receiveShadow = true;
-        group.add(b2);
-
-        const textSprite = this.createTextSprite(config.label, {
-            fontSize: 78,
-            textColor: '#e11d48',
+        // Tilted high-contrast number badge on Box 3 facing camera directly
+        const numberPlatteGeo = new THREE.PlaneGeometry(width * 0.65, height * 0.9);
+        const numberCanvas = document.createElement('canvas');
+        numberCanvas.width = 256;
+        numberCanvas.height = 256;
+        const nCtx = numberCanvas.getContext('2d');
+        this.renderTextOnCanvas(nCtx, 256, 256, config.label, {
+            fontSize: 130,
+            textColor: '#0f172a',
             strokeColor: '#ffffff',
             strokeWidth: 16
         });
-        textSprite.position.set(0, height * 0.52, -depth / 2 - 0.05);
-        textSprite.scale.set(width * 0.95, height * 0.55, 1);
-        textSprite.rotation.y = Math.PI;
-        group.add(textSprite);
+        const nTexture = new THREE.CanvasTexture(numberCanvas);
+        const nMat = new THREE.MeshBasicMaterial({ map: nTexture, transparent: true, side: THREE.DoubleSide });
+        const numberMesh = new THREE.Mesh(numberPlatteGeo, nMat);
+        numberMesh.position.set(0, height * 0.58, -depth / 2 - 0.06);
+        numberMesh.rotation.set(0.42, Math.PI, 0); // Face camera correctly without mirroring!
+        group.add(numberMesh);
 
+        // Floating Gun on top of Box 3 (AK-47)
         let weaponModel = null;
         if (config.hasWeapon) {
             weaponModel = this.createAK47Model();
             weaponModel.position.set(0, height + 0.55, 0);
-            weaponModel.scale.set(1.4, 1.4, 1.4);
-            weaponModel.rotation.set(0, Math.PI / 2, 0);
+            weaponModel.scale.set(1.15, 1.15, 1.15);
+            weaponModel.rotation.set(0.15, Math.PI / 2, 0); // Side profile with slight tilt for camera
             group.add(weaponModel);
             this.floatingWeapons.push({
                 model: weaponModel,
@@ -438,7 +408,7 @@ export class Game3D {
             });
         }
 
-        // Stationary box (Box 23) added to stationaryGroup, moving boxes to rightLaneGroup
+        // Stationary box (Box 3) added to stationaryGroup
         if (config.isStationary) {
             this.stationaryGroup.add(group);
         } else {
@@ -447,8 +417,7 @@ export class Game3D {
 
         const boxObj = {
             group: group,
-            b1: b1,
-            b2: b2,
+            bMesh: bMesh,
             localX: config.x,
             localZ: config.z,
             isStationary: !!config.isStationary,
@@ -458,32 +427,26 @@ export class Game3D {
             hp: config.hp,
             maxHp: config.hp,
             label: config.label,
-            textSprite: textSprite,
+            numberMesh: numberMesh,
             weaponModel: weaponModel,
             hasWeapon: config.hasWeapon,
             isDestroyed: false,
             onHit: function(dmg) {
-                if (textSprite && textSprite.userData && textSprite.userData.ctx) {
-                    const currentVal = Math.max(0, Math.ceil(this.hp)).toString();
-                    const ctx = textSprite.userData.ctx;
-                    const w = textSprite.userData.canvas.width;
-                    const h = textSprite.userData.canvas.height;
-                    
-                    ctx.clearRect(0, 0, w, h);
-                    ctx.font = '900 86px "Arial Black", Impact, sans-serif';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
+                const currentVal = Math.max(0, Math.ceil(this.hp)).toString();
+                nCtx.clearRect(0, 0, 256, 256);
+                nCtx.font = '900 130px "Arial Black", Impact, sans-serif';
+                nCtx.textAlign = 'center';
+                nCtx.textBaseline = 'middle';
 
-                    ctx.lineWidth = 18;
-                    ctx.strokeStyle = '#ffffff';
-                    ctx.lineJoin = 'round';
-                    ctx.strokeText(currentVal, w / 2, h / 2);
+                nCtx.lineWidth = 16;
+                nCtx.strokeStyle = '#ffffff';
+                nCtx.lineJoin = 'round';
+                nCtx.strokeText(currentVal, 128, 128);
 
-                    ctx.fillStyle = '#e11d48';
-                    ctx.fillText(currentVal, w / 2, h / 2);
+                nCtx.fillStyle = '#0f172a';
+                nCtx.fillText(currentVal, 128, 128);
 
-                    textSprite.userData.texture.needsUpdate = true;
-                }
+                nTexture.needsUpdate = true;
 
                 group.position.x = this.localX + (Math.random() - 0.5) * 0.08;
                 setTimeout(() => { group.position.x = this.localX; }, 35);
@@ -497,9 +460,6 @@ export class Game3D {
                 }
                 if (isStationary) {
                     this.isBox23Destroyed = true; // Unlock left gates movement!
-                    if (this.leftBarrier) {
-                        this.leftBarrier.visible = false;
-                    }
                 }
                 group.visible = false;
             }.bind(this)
@@ -509,12 +469,12 @@ export class Game3D {
     }
 
     spawnDebris(worldPos, isStationary = false) {
-        // Explode into 8 yellow debris blocks
+        // Explode into 10 yellow debris blocks
         const pieceGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-        const pieceMat = new THREE.MeshStandardMaterial({ color: 0xebb405, roughness: 0.3 });
-        for (let i = 0; i < 8; i++) {
+        const pieceMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 });
+        for (let i = 0; i < 10; i++) {
             const piece = new THREE.Mesh(pieceGeo, pieceMat);
-            piece.position.copy(worldPos).add(new THREE.Vector3((Math.random() - 0.5) * 1.2, 0.8 + Math.random() * 0.8, (Math.random() - 0.5) * 1.2));
+            piece.position.copy(worldPos).add(new THREE.Vector3((Math.random() - 0.5) * 1.4, 0.6 + Math.random() * 0.8, (Math.random() - 0.5) * 1.4));
             this.scene.add(piece);
             this.debrisList.push({
                 mesh: piece,
@@ -529,136 +489,118 @@ export class Game3D {
 
     createAK47Model() {
         const gun = new THREE.Group();
-        const blueGunMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.35, metalness: 0.6 });
-        const darkMetalMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.85 });
-        const woodMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.6, metalness: 0.1 });
 
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.9), blueGunMat);
-        body.position.set(0, 0, 0);
-        body.castShadow = true;
-        gun.add(body);
+        // 1. Materials matching the reference image:
+        // Royal / Electric Blue for Stock, Handguard, and Grip
+        const blueMat = new THREE.MeshStandardMaterial({
+            color: 0x2563eb,
+            roughness: 0.3,
+            metalness: 0.35
+        });
+        // Dark Gunmetal / Charcoal Metal for Receiver, Barrel, Mag, Sights
+        const darkMetalMat = new THREE.MeshStandardMaterial({
+            color: 0x18181b,
+            roughness: 0.35,
+            metalness: 0.85
+        });
+        const accentMetalMat = new THREE.MeshStandardMaterial({
+            color: 0x334155,
+            roughness: 0.4,
+            metalness: 0.7
+        });
 
-        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.85, 8), darkMetalMat);
+        // 2. Receiver (Thân súng)
+        const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.20, 0.85), darkMetalMat);
+        receiver.position.set(0, 0, 0);
+        receiver.castShadow = true;
+        gun.add(receiver);
+
+        const dustCover = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, 0.72), darkMetalMat);
+        dustCover.position.set(0, 0.13, -0.06);
+        gun.add(dustCover);
+
+        const rearSight = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.14), accentMetalMat);
+        rearSight.position.set(0, 0.13, 0.34);
+        gun.add(rearSight);
+
+        // 3. Royal Blue Handguard (Ốp lót tay)
+        const lowerHandguard = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.15, 0.52), blueMat);
+        lowerHandguard.position.set(0, 0.01, 0.68);
+        lowerHandguard.castShadow = true;
+        gun.add(lowerHandguard);
+
+        const upperHandguard = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.10, 0.46), blueMat);
+        upperHandguard.position.set(0, 0.12, 0.68);
+        gun.add(upperHandguard);
+
+        // 4. Royal Blue Stock (Báng súng)
+        const stock = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.24, 0.72), blueMat);
+        stock.position.set(0, -0.04, -0.74);
+        stock.rotation.x = -0.08;
+        stock.castShadow = true;
+        gun.add(stock);
+
+        const buttPlate = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.25, 0.05), darkMetalMat);
+        buttPlate.position.set(0, -0.07, -1.10);
+        buttPlate.rotation.x = -0.08;
+        gun.add(buttPlate);
+
+        // 5. Royal Blue Pistol Grip (Tay cầm)
+        const grip = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.30, 0.13), blueMat);
+        grip.position.set(0, -0.21, -0.22);
+        grip.rotation.x = -0.42;
+        grip.castShadow = true;
+        gun.add(grip);
+
+        // 6. Curved Banana Magazine (Băng đạn cong đặc trưng AK)
+        const magUpper = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.26, 0.20), darkMetalMat);
+        magUpper.position.set(0, -0.20, 0.24);
+        magUpper.rotation.x = 0.32;
+        magUpper.castShadow = true;
+        gun.add(magUpper);
+
+        const magLower = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.22, 0.18), darkMetalMat);
+        magLower.position.set(0, -0.38, 0.33);
+        magLower.rotation.x = 0.56;
+        magLower.castShadow = true;
+        gun.add(magLower);
+
+        // 7. Barrel, Gas Tube, Front Sight & Muzzle (Nòng & Đầu ruồi)
+        const gasTube = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.56, 8), darkMetalMat);
+        gasTube.rotation.x = Math.PI / 2;
+        gasTube.position.set(0, 0.11, 0.70);
+        gun.add(gasTube);
+
+        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, 1.10, 8), darkMetalMat);
         barrel.rotation.x = Math.PI / 2;
-        barrel.position.set(0, 0.04, 0.78);
+        barrel.position.set(0, 0.02, 1.05);
         barrel.castShadow = true;
         gun.add(barrel);
 
-        const gasTube = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.5, 8), woodMat);
-        gasTube.rotation.x = Math.PI / 2;
-        gasTube.position.set(0, 0.09, 0.62);
-        gun.add(gasTube);
+        const frontSight = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.16, 0.07), darkMetalMat);
+        frontSight.position.set(0, 0.11, 1.48);
+        gun.add(frontSight);
 
-        const handguard = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.16, 0.45), woodMat);
-        handguard.position.set(0, 0.02, 0.58);
-        gun.add(handguard);
+        const muzzleBrake = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.032, 0.12, 8), darkMetalMat);
+        muzzleBrake.rotation.x = Math.PI / 2;
+        muzzleBrake.position.set(0, 0.02, 1.62);
+        gun.add(muzzleBrake);
 
-        const mag = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.38, 0.2), darkMetalMat);
-        mag.position.set(0, -0.22, 0.22);
-        mag.rotation.x = 0.38;
-        gun.add(mag);
-
-        const grip = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.24, 0.12), woodMat);
-        grip.position.set(0, -0.16, -0.18);
-        grip.rotation.x = -0.42;
-        gun.add(grip);
-
-        const stock = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.65), woodMat);
-        stock.position.set(0, -0.04, -0.68);
-        stock.rotation.x = -0.08;
-        gun.add(stock);
-
-        const glowMat = new THREE.MeshBasicMaterial({
-            color: 0x60a5fa,
-            transparent: true,
-            opacity: 0.35,
-            side: THREE.BackSide
-        });
-        const glowMesh = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.42, 1.8), glowMat);
-        glowMesh.position.set(0, 0, 0.05);
-        gun.add(glowMesh);
+        // 8. Trigger Guard (Vành cò)
+        const triggerGuard = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.10, 0.16), darkMetalMat);
+        triggerGuard.position.set(0, -0.13, -0.04);
+        gun.add(triggerGuard);
 
         return gun;
     }
 
     triggerWeaponPickup(weaponModel, worldPos) {
         this.bulletPower += 2;
-        this.fireInterval = Math.max(0.04, this.fireInterval * 0.7);
+        this.fireInterval = 0.11; // Fast rapid fire after unlocking the gun!
         this.onPowerUp({ type: 'gun', power: this.bulletPower });
 
-        for (let i = 0; i < 20; i++) {
-            this.spawnSparkParticle(this.playerX, 1.2, this.playerZ, 0x60a5fa);
-        }
-    }
-
-    createTranslucentGate(x, z, data) {
-        const group = new THREE.Group();
-        group.position.set(x, 0, z);
-
-        const width = 3.2;
-        const height = 3.6;
-
-        const postMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x0369a1, roughness: 0.2 });
-        const pL = new THREE.Mesh(new THREE.BoxGeometry(0.14, height, 0.14), postMat);
-        pL.position.set(-width / 2 + 0.07, height / 2, 0);
-        group.add(pL);
-
-        const pR = new THREE.Mesh(new THREE.BoxGeometry(0.14, height, 0.14), postMat);
-        pR.position.set(width / 2 - 0.07, height / 2, 0);
-        group.add(pR);
-
-        const energyMat = new THREE.MeshBasicMaterial({
-            color: 0x38bdf8,
-            transparent: true,
-            opacity: 0.42,
-            side: THREE.DoubleSide,
-            depthWrite: false
-        });
-        const energyMesh = new THREE.Mesh(new THREE.PlaneGeometry(width - 0.2, height * 0.75), energyMat);
-        energyMesh.position.set(0, height * 0.45, 0);
-        group.add(energyMesh);
-
-        const sprite = this.createTextSprite(data.label, {
-            fontSize: 72,
-            textColor: '#ffffff',
-            strokeColor: '#0284c7',
-            strokeWidth: 14
-        });
-        sprite.position.set(0, height * 0.52, 0);
-        sprite.scale.set(2.4, 1.4, 1);
-        group.add(sprite);
-
-        this.rightLaneGroup.add(group);
-
-        return {
-            group: group,
-            localX: x,
-            localZ: z,
-            width: width,
-            data: data,
-            isPassed: false,
-            onPass: () => {
-                energyMat.opacity = 0.95;
-                // Add runners to squad based on gate value!
-                this.applyGateRunnerIncrease(data);
-                this.onPowerUp({ type: 'gate', val: data.val });
-                setTimeout(() => { group.visible = false; }, 200);
-            }
-        };
-    }
-
-    applyGateRunnerIncrease(gateData) {
-        const countToAdd = gateData.val || 1;
-        for (let i = 0; i < countToAdd; i++) {
-            if (this.squad.length < 35) {
-                this.addMemberToSquad();
-            }
-        }
-        this.recalculateSquadFormation();
-        this.onSquadCountChange(this.squad.length);
-
-        for (let p = 0; p < 16; p++) {
-            this.spawnSparkParticle(this.playerX, 1.2, this.playerZ, 0x38bdf8);
+        for (let i = 0; i < 25; i++) {
+            this.spawnSparkParticle(this.playerX, 1.2, this.playerZ, 0xfacc15);
         }
     }
 
@@ -666,7 +608,7 @@ export class Game3D {
         const group = new THREE.Group();
         group.position.set(x, 0, z);
 
-        const width = 2.1;
+        const width = 2.8;
         const height = 2.6;
 
         const frameMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
@@ -681,25 +623,33 @@ export class Game3D {
         const energyMat = new THREE.MeshBasicMaterial({
             color: 0x0284c7,
             transparent: true,
-            opacity: 0.35,
+            opacity: 0.38,
             side: THREE.DoubleSide,
             depthWrite: false
         });
-        const energyMesh = new THREE.Mesh(new THREE.PlaneGeometry(width - 0.1, height * 0.7), energyMat);
-        energyMesh.position.set(0, height * 0.42, 0);
+        const energyMesh = new THREE.Mesh(new THREE.PlaneGeometry(width - 0.1, height * 0.72), energyMat);
+        energyMesh.position.set(0, height * 0.45, 0);
         group.add(energyMesh);
 
-        const sprite = this.createTextSprite(label, {
-            fontSize: 54,
+        group.rotation.set(0.36, Math.PI, 0); // Face camera directly without mirroring!
+
+        const gCanvas = document.createElement('canvas');
+        gCanvas.width = 256;
+        gCanvas.height = 144;
+        const gCtx = gCanvas.getContext('2d');
+        this.renderTextOnCanvas(gCtx, 256, 144, label, {
+            fontSize: 96,
             textColor: '#ffffff',
             strokeColor: '#0369a1',
-            strokeWidth: 10
+            strokeWidth: 16
         });
-        sprite.position.set(0, height * 0.45, 0);
-        sprite.scale.set(1.4, 0.85, 1);
-        group.add(sprite);
+        const gTexture = new THREE.CanvasTexture(gCanvas);
+        const gMat = new THREE.MeshBasicMaterial({ map: gTexture, transparent: true, side: THREE.DoubleSide });
+        const textMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.05), gMat);
+        textMesh.position.set(0, height * 0.48, 0.05);
+        group.add(textMesh);
 
-        this.leftGatesGroup.add(group); // Added to leftGatesGroup (moves only when Box 23 is destroyed)
+        this.leftGatesGroup.add(group);
 
         return {
             group: group,
@@ -708,84 +658,87 @@ export class Game3D {
             width: width,
             isTriggered: false,
             onHitBullet: () => {
-                this.bulletPower += 0.2;
+                this.bulletPower += 0.25;
                 energyMat.opacity = 0.9;
-                setTimeout(() => { energyMat.opacity = 0.35; }, 80);
+                setTimeout(() => { energyMat.opacity = 0.38; }, 80);
                 const currentGateZ = this.isBox23Destroyed ? (z - this.leftGatesDistance) : z;
                 this.spawnSparkParticle(x, 1.2, this.playerZ + currentGateZ, 0x38bdf8);
             },
             onPassPlayer: () => {
                 // When player passes through +1 gate, add 1 runner!
-                if (this.squad.length < 35) {
+                if (this.squad.length < 150) {
                     this.addMemberToSquad();
                     this.recalculateSquadFormation();
                     this.onSquadCountChange(this.squad.length);
                 }
+                this.bulletPower += 0.15;
             }
         };
     }
 
-    spawnEnemyGuard(x, z, config) {
+    spawnRedMinion(x, z, config) {
         const group = new THREE.Group();
         group.position.set(x, 0, z);
 
-        const enemyObj = {
+        const minionScale = 0.42 + Math.random() * 0.11; // Scaled down to ~70% size
+        const rotOffset = (Math.random() - 0.5) * 0.35;
+        group.rotation.y = Math.PI + rotOffset; // Face towards player!
+
+        const minionObj = {
             group: group,
             model: null,
             mixer: null,
+            baseLocalX: x,
+            baseLocalZ: z,
             localX: x,
             localZ: z,
-            hp: config.hp,
-            maxHp: config.hp,
-            isDestroyed: false,
-            hpTextSprite: null
+            scale: minionScale,
+            rotOffset: rotOffset,
+            wobbleSpeed: 2.2 + Math.random() * 3.4,
+            wobbleAmp: 0.10 + Math.random() * 0.22,
+            wobblePhase: Math.random() * Math.PI * 2,
+            driftSpeed: (Math.random() - 0.5) * 1.4,
+            hp: config.hp || 2,
+            maxHp: config.hp || 2,
+            isDestroyed: false
         };
 
-        const hpSprite = this.createTextSprite(`${config.hp}`, {
-            fontSize: 72,
-            textColor: '#ffffff',
-            strokeColor: '#1e3a8a',
-            strokeWidth: 14
-        });
-        hpSprite.position.set(0, 1.8, 0);
-        hpSprite.scale.set(1.1, 0.6, 1);
-        group.add(hpSprite);
-        enemyObj.hpTextSprite = hpSprite;
-
         if (this.basePlayerModel) {
-            this.setupEnemyMesh(enemyObj);
+            this.setupRedMinionMesh(minionObj);
         } else {
-            this.setupProceduralEnemyMesh(enemyObj);
+            this.setupProceduralRedMinionMesh(minionObj);
         }
 
         this.rightLaneGroup.add(group);
-        this.enemies.push(enemyObj);
+        this.redMinions.push(minionObj);
     }
 
-    setupEnemyMesh(enemyObj) {
+    setupRedMinionMesh(minionObj) {
         if (!this.basePlayerModel) return;
         try {
-            if (enemyObj.proceduralGroup) {
-                enemyObj.group.remove(enemyObj.proceduralGroup);
-                enemyObj.proceduralGroup = null;
+            if (minionObj.proceduralGroup) {
+                minionObj.group.remove(minionObj.proceduralGroup);
+                minionObj.proceduralGroup = null;
             }
-            if (enemyObj.model) {
-                enemyObj.group.remove(enemyObj.model);
+            if (minionObj.model) {
+                minionObj.group.remove(minionObj.model);
             }
 
             const m = SkeletonUtils.clone(this.basePlayerModel);
-            m.scale.set(0.72, 0.72, 0.72);
-            m.rotation.y = Math.PI; // Face towards player
+            const s = minionObj.scale || 0.65;
+            m.scale.set(s, s, s);
+            m.rotation.y = 0; // Group handles facing direction (Math.PI)
 
-            const blueMat = new THREE.MeshStandardMaterial({
-                color: 0x1d4ed8,
+            // Bright red minion material matching the image
+            const redMat = new THREE.MeshStandardMaterial({
+                color: 0xdc2626,
                 roughness: 0.35,
-                metalness: 0.25
+                metalness: 0.2
             });
 
             m.traverse(node => {
                 if (node.isMesh || node.isSkinnedMesh) {
-                    node.material = blueMat;
+                    node.material = redMat;
                     node.frustumCulled = false;
                     node.castShadow = true;
                     node.receiveShadow = true;
@@ -795,52 +748,57 @@ export class Game3D {
             if (this.clips && this.clips.run) {
                 const mixer = new THREE.AnimationMixer(m);
                 const action = mixer.clipAction(this.clips.run);
+                action.timeScale = 0.85 + Math.random() * 0.35; // Asynchronous leg movements
                 action.play();
                 mixer.setTime(Math.random() * 1.2);
-                enemyObj.mixer = mixer;
+                minionObj.mixer = mixer;
             }
 
-            enemyObj.group.add(m);
-            enemyObj.model = m;
+            minionObj.group.add(m);
+            minionObj.model = m;
         } catch (e) {
-            console.warn('Error setting up enemy mesh', e);
+            console.warn('Error setting up red minion mesh', e);
         }
     }
 
-    setupProceduralEnemyMesh(enemyObj) {
+    setupProceduralRedMinionMesh(minionObj) {
         const procGroup = new THREE.Group();
-        const blueMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.35 });
-        const darkMat = new THREE.MeshStandardMaterial({ color: 0x172554, roughness: 0.5 });
+        const redMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.35 });
+        const tanMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.4 });
 
-        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.35, 0.9, 12), blueMat);
-        body.position.y = 0.75;
+        const s = minionObj.scale || 0.65;
+        procGroup.scale.set(s, s, s);
+        procGroup.rotation.y = 0;
+
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.7, 10), redMat);
+        body.position.y = 0.55;
         body.castShadow = true;
         procGroup.add(body);
 
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 16, 16), blueMat);
-        head.position.y = 1.35;
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), redMat);
+        head.position.y = 1.05;
         head.castShadow = true;
         procGroup.add(head);
 
-        const shoulders = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.25, 0.35), darkMat);
-        shoulders.position.y = 1.05;
-        procGroup.add(shoulders);
+        const legs = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.32, 0.16), tanMat);
+        legs.position.y = 0.16;
+        procGroup.add(legs);
 
-        enemyObj.group.add(procGroup);
-        enemyObj.proceduralGroup = procGroup;
-        enemyObj.model = null;
+        minionObj.group.add(procGroup);
+        minionObj.proceduralGroup = procGroup;
+        minionObj.model = null;
     }
 
     createFinalBoss(z, config = {}) {
         const group = new THREE.Group();
-        group.position.set(-1.0, 0, z);
+        group.position.set(-1.1, 0, z);
 
-        const bossHp = config.hp || 1500;
+        const bossHp = config.hp || 3800;
         this.finalBoss = {
             group: group,
             model: null,
             mixer: null,
-            localX: -1.0,
+            localX: -1.1,
             localZ: z,
             hp: bossHp,
             maxHp: bossHp,
@@ -902,11 +860,19 @@ export class Game3D {
             }
 
             const m = SkeletonUtils.clone(this.baseBossModel);
-            m.scale.set(2.8, 2.8, 2.8);
+            m.scale.set(3.0, 3.0, 3.0);
             m.rotation.y = Math.PI; // Face towards player squad
+
+            // Red Boss material matching the giant boss in the image
+            const bossRedMat = new THREE.MeshStandardMaterial({
+                color: 0x991b1b,
+                roughness: 0.35,
+                metalness: 0.25
+            });
 
             m.traverse(node => {
                 if (node.isMesh || node.isSkinnedMesh) {
+                    node.material = bossRedMat;
                     node.frustumCulled = false;
                     node.castShadow = true;
                     node.receiveShadow = true;
@@ -933,8 +899,7 @@ export class Game3D {
     setupProceduralBossMesh() {
         if (!this.finalBoss) return;
         const procGroup = new THREE.Group();
-        const redMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.35 });
-        const darkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.5 });
+        const redMat = new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.35 });
 
         const body = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.1, 2.8, 12), redMat);
         body.position.y = 2.0;
@@ -966,12 +931,17 @@ export class Game3D {
     // -----------------------------------------------------------------
     // 3D MODEL LOADING: Skin_BF14 & Hero_02
     // -----------------------------------------------------------------
+    setupInitialPlayer() {
+        // Create initial player runner on frame 1 so player is immediately visible with a gun
+        this.fallbackHero();
+    }
+
     loadPlayerModel() {
         const loader = new GLTFLoader();
 
         const setupModel = (gltf) => {
             this.basePlayerModel = gltf.scene;
-            this.basePlayerModel.scale.set(0.72, 0.72, 0.72);
+            this.basePlayerModel.scale.set(0.50, 0.50, 0.50); // Scaled down to ~70% size
 
             this.basePlayerModel.traverse((node) => {
                 if (node.isSkinnedMesh || node.isMesh) {
@@ -982,10 +952,22 @@ export class Game3D {
             });
 
             this.modelLoaded = true;
+
+            // Upgrade squad with Skin_BF14 model
+            if (this.squad.length > 0) {
+                this.squad.forEach(member => {
+                    if (member && member.model) {
+                        this.scene.remove(member.model);
+                    }
+                });
+                this.squad = [];
+            }
             this.addMemberToSquad(0, 0);
             this.onSquadCountChange(this.squad.length);
-            this.enemies.forEach(e => {
-                this.setupEnemyMesh(e);
+
+            // Apply Skin_BF14 (in bright red) to all Red Minions
+            this.redMinions.forEach(m => {
+                this.setupRedMinionMesh(m);
             });
         };
 
@@ -1025,10 +1007,12 @@ export class Game3D {
         this.basePlayerModel.add(legs);
 
         this.modelLoaded = true;
-        this.addMemberToSquad(0, 0);
-        this.onSquadCountChange(this.squad.length);
-        this.enemies.forEach(e => {
-            this.setupEnemyMesh(e);
+        if (this.squad.length === 0) {
+            this.addMemberToSquad(0, 0);
+            this.onSquadCountChange(this.squad.length);
+        }
+        this.redMinions.forEach(m => {
+            this.setupRedMinionMesh(m);
         });
     }
 
@@ -1046,9 +1030,9 @@ export class Game3D {
         memberModel.position.set(this.playerX + offsetX, 0, this.playerZ + offsetZ);
 
         const gun = this.createAK47Model();
-        gun.scale.set(0.62, 0.62, 0.12);
-        gun.position.set(0.36, 1.16, 0.38);
-        gun.rotation.set(-0.04, 0, 0);
+        gun.scale.set(0.34, 0.34, 0.34); // Proportionate to 70% runner scale
+        gun.position.set(0.30, 0.76, 0.50);
+        gun.rotation.set(-0.06, 0, 0);
         memberModel.add(gun);
 
         this.scene.add(memberModel);
@@ -1091,7 +1075,7 @@ export class Game3D {
 
     recalculateSquadFormation() {
         const count = this.squad.length;
-        const baseSpacing = Math.max(0.52, 0.72 - Math.min(0.20, count * 0.005));
+        const baseSpacing = Math.max(0.32, 0.48 - Math.min(0.18, count * 0.003));
 
         this.squad.forEach((member, i) => {
             if (i === 0) {
@@ -1106,7 +1090,7 @@ export class Game3D {
             const clampedX = THREE.MathUtils.clamp(spreadX, -1.8, 1.8);
 
             member.targetOffsetX = clampedX;
-            member.targetOffsetZ = -Math.abs(Math.sin(phi) * r) * 1.15 - 0.25;
+            member.targetOffsetZ = -Math.abs(Math.sin(phi) * r) * 0.95 - 0.20;
         });
     }
 
@@ -1291,18 +1275,18 @@ export class Game3D {
     // BULLETS & SHOOTING
     // -----------------------------------------------------------------
     spawnBullet(originX, originZ) {
-        const bulletGeo = new THREE.ConeGeometry(0.09, 0.6, 8);
+        const bulletGeo = new THREE.ConeGeometry(0.075, 0.48, 8);
         const bulletMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
         const bulletMesh = new THREE.Mesh(bulletGeo, bulletMat);
         bulletMesh.rotation.x = Math.PI / 2;
-        bulletMesh.position.set(originX, 0.84, originZ);
+        bulletMesh.position.set(originX, 0.62, originZ);
 
         this.scene.add(bulletMesh);
         this.bullets.push({
             mesh: bulletMesh,
             speed: 68,
             damage: this.bulletPower,
-            life: 1.6
+            life: 0.8 // Half lifetime for half range
         });
 
         this.onShoot();
@@ -1313,12 +1297,14 @@ export class Game3D {
             this.fireTimer += delta;
             if (this.fireTimer >= this.fireInterval) {
                 this.fireTimer = 0;
-                // Fire from all squad runners!
+                // Fire from squad runners!
                 const squadCount = this.squad.length;
-                const maxStreams = Math.min(8, squadCount);
+                const maxStreams = Math.min(36, squadCount);
                 for (let i = 0; i < maxStreams; i++) {
                     const runner = this.squad[i];
-                    this.spawnBullet(runner.model.position.x + 0.19, runner.model.position.z + 0.85);
+                    if (runner && runner.model) {
+                        this.spawnBullet(runner.model.position.x + 0.14, runner.model.position.z + 0.60);
+                    }
                 }
             }
         }
@@ -1330,7 +1316,7 @@ export class Game3D {
 
             let bulletRemoved = false;
 
-            // 1. Boxes collision (Stationary Box 23 uses localZ, moving boxes use localZ - distanceTravelled)
+            // 1. Boxes collision (Stationary Box 3 uses localZ, moving boxes use localZ - distanceTravelled)
             for (let k = 0; k < this.boxObstacles.length; k++) {
                 const box = this.boxObstacles[k];
                 if (box.isDestroyed) continue;
@@ -1359,37 +1345,37 @@ export class Game3D {
             }
             if (bulletRemoved) continue;
 
-            // 2. Enemies collision
-            for (let k = 0; k < this.enemies.length; k++) {
-                const enemy = this.enemies[k];
-                if (enemy.isDestroyed) continue;
+            // 2. Red Minions Horde collision
+            for (let k = 0; k < this.redMinions.length; k++) {
+                const minion = this.redMinions[k];
+                if (minion.isDestroyed) continue;
 
-                const worldEnemyZ = enemy.localZ - this.distanceTravelled;
-                const dz = worldEnemyZ - b.mesh.position.z;
-                const dx = Math.abs(enemy.localX - b.mesh.position.x);
+                const worldMinionZ = minion.localZ - this.distanceTravelled;
+                const dz = worldMinionZ - b.mesh.position.z;
+                const dx = Math.abs(minion.localX - b.mesh.position.x);
 
-                if (dz > -0.4 && dz < 1.2 && dx < 1.2) {
-                    enemy.hp -= b.damage;
-                    if (enemy.hpTextSprite && enemy.hpTextSprite.userData && enemy.hpTextSprite.userData.ctx) {
-                        this.renderTextOnCanvas(
-                            enemy.hpTextSprite.userData.ctx,
-                            enemy.hpTextSprite.userData.canvas.width,
-                            enemy.hpTextSprite.userData.canvas.height,
-                            `${Math.max(0, Math.ceil(enemy.hp))}`,
-                            enemy.hpTextSprite.userData.options
-                        );
-                        enemy.hpTextSprite.userData.texture.needsUpdate = true;
-                    }
-                    this.spawnSparkBurst(b.mesh.position.x, 1.4, b.mesh.position.z);
-                    this.spawnFloatingDamageText(enemy.localX, 2.4, worldEnemyZ, `-${Math.ceil(b.damage)}`);
+                if (dz > -0.4 && dz < 1.0 && dx < 0.45) {
+                    minion.hp -= b.damage;
+                    this.spawnSparkBurst(b.mesh.position.x, 1.0, b.mesh.position.z);
 
-                    if (enemy.hp <= 0) {
-                        enemy.isDestroyed = true;
-                        enemy.group.visible = false;
-                        for (let p = 0; p < 25; p++) {
-                            this.spawnSparkParticle(enemy.localX, 1.4, worldEnemyZ, 0x1d4ed8);
+                    if (minion.hp <= 0) {
+                        for (let p = 0; p < 12; p++) {
+                            this.spawnSparkParticle(minion.localX, 0.9, worldMinionZ, 0xdc2626);
                         }
-                        this.onCoinCollect({ amount: 800 });
+                        this.onCoinCollect({ amount: 50 });
+
+                        // Endless horde: respawn minion in front of the boss if boss is alive
+                        if (!this.finalBoss || !this.finalBoss.isDestroyed) {
+                            const bossDist = Math.max(10, this.finalBoss.localZ - this.distanceTravelled - 8);
+                            minion.localZ = this.distanceTravelled + 35 + Math.random() * (bossDist - 5);
+                            minion.baseLocalX = -2.72 + Math.random() * 3.14;
+                            minion.localX = minion.baseLocalX;
+                            minion.group.position.x = minion.localX;
+                            minion.group.position.z = minion.localZ;
+                            minion.hp = minion.maxHp;
+                            minion.isDestroyed = false;
+                            minion.group.visible = true;
+                        }
                     }
 
                     this.scene.remove(b.mesh);
@@ -1400,7 +1386,7 @@ export class Game3D {
             }
             if (bulletRemoved) continue;
 
-            // 3. Left lane +1 booster gates (moves only when Box 23 is destroyed)
+            // 3. Left lane +1 booster gates (moves only when Box 3 is destroyed)
             for (let k = 0; k < this.leftGates.length; k++) {
                 const lg = this.leftGates[k];
                 const worldGateZ = this.isBox23Destroyed ? (lg.localZ - this.leftGatesDistance) : lg.localZ;
@@ -1409,11 +1395,11 @@ export class Game3D {
 
                 if (dz > -0.4 && dz < 0.8 && dx < lg.width / 2) {
                     lg.onHitBullet();
-                    b.damage += 0.4;
+                    b.damage += 0.25;
                 }
             }
 
-            // 4. Final Boss collision (Athlete_05)
+            // 4. Giant Red Boss collision
             if (this.finalBoss && !this.finalBoss.isDestroyed) {
                 const boss = this.finalBoss;
                 const worldBossZ = boss.localZ - this.distanceTravelled;
@@ -1450,6 +1436,18 @@ export class Game3D {
                             this.spawnSparkParticle(boss.localX + (Math.random() - 0.5) * 3, 2.0 + Math.random() * 2, worldBossZ, 0xfacc15);
                         }
 
+                        // Wipe out ALL remaining red enemies immediately!
+                        this.redMinions.forEach(m => {
+                            if (!m.isDestroyed) {
+                                m.isDestroyed = true;
+                                m.group.visible = false;
+                                const wZ = m.localZ - this.distanceTravelled;
+                                for (let p = 0; p < 4; p++) {
+                                    this.spawnSparkParticle(m.localX, 0.9, wZ, 0xdc2626);
+                                }
+                            }
+                        });
+
                         this.onCoinCollect({ amount: 5000 });
 
                         // Trigger Victory on Boss defeat!
@@ -1464,7 +1462,7 @@ export class Game3D {
                 }
             }
 
-            if (b.life <= 0 || b.mesh.position.z > 60) {
+            if (b.life <= 0 || b.mesh.position.z > this.playerZ + 35) {
                 this.scene.remove(b.mesh);
                 this.bullets.splice(i, 1);
             }
@@ -1491,9 +1489,9 @@ export class Game3D {
             this.distanceTravelled += this.worldSpeed * delta;
             this.rightLaneGroup.position.z = -this.distanceTravelled;
 
-            // Left lane +1 gates move ONLY after Box 23 is destroyed!
+            // Left lane +1 gates move rapidly ONLY after Box 3 is destroyed!
             if (this.isBox23Destroyed) {
-                this.leftGatesDistance += this.worldSpeed * delta;
+                this.leftGatesDistance += this.leftGatesSpeed * delta;
                 this.leftGatesGroup.position.z = -this.leftGatesDistance;
             } else {
                 this.leftGatesGroup.position.z = 0;
@@ -1518,9 +1516,22 @@ export class Game3D {
             }
         }
 
-        // Update enemy and boss animation mixers
-        this.enemies.forEach(e => {
-            if (e.mixer) e.mixer.update(delta);
+        // Update red minions with dynamic chaotic swarm motion & animation mixers
+        this.redMinions.forEach(m => {
+            if (m.isDestroyed) return;
+
+            if (this.isGameActive && !this.isLevelFinished) {
+                // Dynamic chaotic jostling & forward surge
+                m.localX = m.baseLocalX + Math.sin(this.animTime * m.wobbleSpeed + m.wobblePhase) * m.wobbleAmp;
+                m.localZ += m.driftSpeed * delta * 0.35;
+                m.group.position.x = m.localX;
+                m.group.position.z = m.localZ;
+                m.group.rotation.y = Math.PI + m.rotOffset + Math.cos(this.animTime * m.wobbleSpeed + m.wobblePhase) * 0.12;
+            }
+
+            if (m.mixer) {
+                m.mixer.update(delta);
+            }
         });
         if (this.finalBoss && this.finalBoss.mixer) {
             this.finalBoss.mixer.update(delta);
@@ -1534,13 +1545,13 @@ export class Game3D {
     }
 
     checkGateCollisions() {
-        // Main Gates (+7, +10)
+        // Main Gates
         this.gates.forEach(g => {
             if (g.isPassed) return;
             const worldGateZ = g.localZ - this.distanceTravelled;
 
-            // When gate reaches player (player is at Z = 0)
-            if (worldGateZ < 1.0 && worldGateZ > -1.2) {
+            // When gate reaches player
+            if (worldGateZ < this.playerZ + 1.2 && worldGateZ > this.playerZ - 1.2) {
                 const dx = this.playerX - g.localX;
                 if (Math.abs(dx) < g.width / 2) {
                     g.isPassed = true;
@@ -1549,12 +1560,11 @@ export class Game3D {
             }
         });
 
-        // Left +1 booster gates (moves only when Box 23 is destroyed)
+        // Left +1 booster gates (infinite continuous stream when Box 3 is destroyed)
         this.leftGates.forEach(lg => {
-            if (lg.isTriggered) return;
             const worldGateZ = this.isBox23Destroyed ? (lg.localZ - this.leftGatesDistance) : lg.localZ;
 
-            if (worldGateZ < 1.2 && worldGateZ > -1.2) {
+            if (!lg.isTriggered && worldGateZ < this.playerZ + 1.2 && worldGateZ > this.playerZ - 1.2) {
                 const dx = this.playerX - lg.localX;
                 if (Math.abs(dx) < lg.width / 2 + 0.6) {
                     lg.isTriggered = true;
@@ -1562,28 +1572,61 @@ export class Game3D {
                     lg.group.visible = false;
                 }
             }
+
+            // Recycle gate to the back to maintain an infinite endless stream
+            if (this.isBox23Destroyed && worldGateZ < this.playerZ - 5.0) {
+                lg.localZ += 240;
+                lg.group.position.z = lg.localZ;
+                lg.isTriggered = false;
+                lg.group.visible = true;
+            }
         });
     }
 
     checkEnemyCollisions() {
-        this.enemies.forEach(enemy => {
-            if (enemy.isDestroyed) return;
-            const worldEnemyZ = enemy.localZ - this.distanceTravelled;
+        this.redMinions.forEach(minion => {
+            if (minion.isDestroyed) return;
+            const worldMinionZ = minion.localZ - this.distanceTravelled;
 
-            // When enemy passes the player line (Z <= 0.6)
-            if (worldEnemyZ <= 0.6) {
-                enemy.isDestroyed = true;
-                enemy.group.visible = false;
+            // When minion passes the player line
+            if (worldMinionZ <= this.playerZ + 0.6) {
+                this.removeRunnersFromSquad(1);
+                this.onHit({ type: 'enemy', damage: 1 });
 
-                const runnersLost = Math.max(1, Math.ceil(enemy.hp));
-                this.removeRunnersFromSquad(runnersLost);
-                this.onHit({ type: 'enemy', damage: runnersLost });
+                for (let p = 0; p < 15; p++) {
+                    this.spawnSparkParticle(minion.localX, 1.0, this.playerZ, 0xdc2626);
+                }
 
-                for (let p = 0; p < 25; p++) {
-                    this.spawnSparkParticle(enemy.localX, 1.2, 0, 0x1d4ed8);
+                // Endless horde: respawn minion in front of the boss if boss is alive
+                if (!this.finalBoss || !this.finalBoss.isDestroyed) {
+                    const bossDist = Math.max(10, this.finalBoss.localZ - this.distanceTravelled - 8);
+                    minion.localZ = this.distanceTravelled + 35 + Math.random() * (bossDist - 5);
+                    minion.baseLocalX = -2.72 + Math.random() * 3.14;
+                    minion.localX = minion.baseLocalX;
+                    minion.group.position.x = minion.localX;
+                    minion.group.position.z = minion.localZ;
+                    minion.hp = minion.maxHp;
+                    minion.isDestroyed = false;
+                    minion.group.visible = true;
+                } else {
+                    minion.isDestroyed = true;
+                    minion.group.visible = false;
                 }
             }
         });
+
+        // Boss collision with squad
+        if (this.finalBoss && !this.finalBoss.isDestroyed) {
+            const worldBossZ = this.finalBoss.localZ - this.distanceTravelled;
+            if (worldBossZ <= this.playerZ + 1.8) {
+                const loss = Math.min(this.squad.length, 3);
+                this.removeRunnersFromSquad(loss);
+                this.onHit({ type: 'boss', damage: loss });
+                for (let p = 0; p < 20; p++) {
+                    this.spawnSparkParticle(this.finalBoss.localX, 1.5, this.playerZ, 0xef4444);
+                }
+            }
+        }
     }
 
     checkBoxObstacleCollisions() {
@@ -1591,8 +1634,8 @@ export class Game3D {
             if (box.isDestroyed || box.isStationary) return;
             const worldBoxZ = box.localZ - this.distanceTravelled;
 
-            // When moving box passes the player line (Z <= 0.6)
-            if (worldBoxZ <= 0.6) {
+            // When moving box passes the player line
+            if (worldBoxZ <= this.playerZ + 0.6) {
                 box.isDestroyed = true;
                 box.onDestroy();
 
@@ -1636,12 +1679,30 @@ export class Game3D {
             targetActionName = 'run';
         }
 
-        this.squad.forEach((member) => {
-            const targetX = this.playerX + member.targetOffsetX;
-            const targetZ = this.playerZ + member.targetOffsetZ;
+        const roadMinX = -2.75;
+        const roadMaxX = 3.55;
 
-            member.model.position.x += (targetX - member.model.position.x) * 14 * delta;
-            member.model.position.z += (targetZ - member.model.position.z) * 14 * delta;
+        this.squad.forEach((member) => {
+            let curOffsetX = member.targetOffsetX;
+            let curOffsetZ = member.targetOffsetZ;
+
+            // Auto-compress (tự dồn lại) squad when hitting left or right railings
+            const projectedX = this.playerX + curOffsetX;
+            if (projectedX < roadMinX) {
+                const overflow = roadMinX - projectedX;
+                curOffsetX += overflow; // Push back inwards towards road
+                curOffsetZ -= Math.abs(overflow) * 0.45; // Squeeze backward in crowd
+            } else if (projectedX > roadMaxX) {
+                const overflow = projectedX - roadMaxX;
+                curOffsetX -= overflow; // Push back inwards towards road
+                curOffsetZ -= Math.abs(overflow) * 0.45; // Squeeze backward in crowd
+            }
+
+            const targetX = THREE.MathUtils.clamp(this.playerX + curOffsetX, roadMinX, roadMaxX);
+            const targetZ = this.playerZ + curOffsetZ;
+
+            member.model.position.x += (targetX - member.model.position.x) * 16 * delta;
+            member.model.position.z += (targetZ - member.model.position.z) * 16 * delta;
 
             member.model.rotation.z = -turnTilt;
             member.model.rotation.y = turnTilt * 0.7;
