@@ -102,6 +102,10 @@ export class GameScene extends Phaser.Scene {
         this.input.on('pointerdown', () => {
             if (!this.gameStarted) {
                 this.startGame();
+
+                if (typeof window.gameReady === 'function') {
+                 window.gameReady();
+                }
             }
         });
     }
@@ -604,6 +608,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     ShowStore() {
+
+        if (typeof window.gameEnd === 'function') {
+                    window.gameEnd();
+                }
+
         if (this.hasTriggeredStore) return;
         this.hasTriggeredStore = true;
 
