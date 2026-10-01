@@ -105,6 +105,11 @@ export class GameScene extends Phaser.Scene {
         this.input.on('pointerdown', () => {
             if (!this.gameStarted) {
                 this.startGame();
+
+            if (typeof window.gameReady === 'function') {
+                        window.gameReady();
+                    }
+
             }
         });
     }
