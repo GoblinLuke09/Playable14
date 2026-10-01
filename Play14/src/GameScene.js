@@ -99,6 +99,12 @@ export class GameScene extends Phaser.Scene {
                 this.game3d.isGameActive = true;
                 const normX = (pointer.x - this.centerX) / (this.w * 0.45);
                 this.game3d.targetPlayerX = Phaser.Math.Clamp(-1.0 - normX * 3.6, this.game3d.minPlayerX, this.game3d.maxPlayerX);
+
+        // Notify Playturbo
+                if (typeof window.gameReady === 'function') {
+                    window.gameReady();
+                }
+
             }
         });
     }
@@ -424,6 +430,11 @@ export class GameScene extends Phaser.Scene {
     ShowStore() {
         if (this.hasTriggeredStore) return;
         this.hasTriggeredStore = true;
+
+        if (typeof window.gameEnd === 'function') {
+                    window.gameEnd();
+                }
+
 
         const storeUrl = "https://play.google.com/store/apps/details?id=com.bf14.epic.run.survivor.game";
         console.log("Playturbo: ShowStore triggered (CTA Click)");
