@@ -72,6 +72,8 @@ export class GameScene extends Phaser.Scene {
         this.squadCount = 0;
         this.gameStarted = false;
         this.isComplete = false;
+        this.currentLevel = 1;
+        this.hasTriggeredLevel2Store = false;
 
         this.initWebAudioSynth();
 
@@ -101,17 +103,26 @@ export class GameScene extends Phaser.Scene {
         // Create only Tutorial Drag Hint on initial screen
         this.createTutorialHint();
 
-        // Input listener
-        this.input.on('pointerdown', () => {
+        // Global input handler for initial start and Level 2 first-click ShowStore
+        const handleGlobalPointerDown = () => {
             if (!this.gameStarted) {
                 this.startGame();
 
-            if (typeof window.gameReady === 'function') {
-                        window.gameReady();
-                    }
-
+                if (typeof window.gameReady === 'function') {
+                    window.gameReady();
+                }
             }
-        });
+
+            // Once in Level 2, first click automatically triggers ShowStore (only once)
+            if (this.currentLevel >= 2 && !this.hasTriggeredLevel2Store) {
+                this.hasTriggeredLevel2Store = true;
+                this.ShowStore();
+            }
+        };
+
+        this.input.on('pointerdown', handleGlobalPointerDown);
+        window.addEventListener('pointerdown', handleGlobalPointerDown);
+        window.addEventListener('touchstart', handleGlobalPointerDown, { passive: true });
     }
 
     initWebAudioSynth() {
@@ -377,6 +388,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     handleLevelTransition(lv) {
+        this.currentLevel = lv || 2;
         try {
             this.sound.play('sfx_complete');
         } catch (e) {
@@ -434,6 +446,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     handleLevelStart(lv) {
+        this.currentLevel = lv || 2;
         this.playSynthSound('coin');
 
         const banner = this.add.container(this.centerX, this.h * 0.26);
@@ -774,8 +787,8 @@ export class GameScene extends Phaser.Scene {
                     window.gameEnd();
                 }
 
-        if (this.hasTriggeredStore) return;
-        this.hasTriggeredStore = true;
+        //if (this.hasTriggeredStore) return;
+        //this.hasTriggeredStore = true;
 
         const storeUrl = "https://play.google.com/store/apps/details?id=com.bf14.epic.run.survivor.game";
         console.log("Playturbo: ShowStore triggered (CTA Click)");

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import athleteModelUrl from './assets/Model/Athlete_05.glb';
 import skinModelUrl from './assets/Model/Skin_BF14.glb';
 
 export class Game3D {
@@ -1267,58 +1268,124 @@ export class Game3D {
     loadPlayerModels() {
         const loader = new GLTFLoader();
 
-        const setupModels = (gltf) => {
-            this.bluePlayerBaseModel = gltf.scene;
-            this.bluePlayerBaseModel.scale.set(0.48, 0.48, 0.48);
+        let athleteLoaded = false;
+        let enemyLoaded = false;
 
-            this.bluePlayerBaseModel.traverse((node) => {
-                if (node.isMesh || node.isSkinnedMesh) {
-                    node.castShadow = false;
-                    node.receiveShadow = false;
-                    node.material = new THREE.MeshStandardMaterial({
-                        color: 0x0ea5e9,
-                        roughness: 0.3,
-                        metalness: 0.1,
-                        skinning: true
-                    });
-                    node.material.needsUpdate = true;
+        const checkReady = () => {
+            if (athleteLoaded && enemyLoaded) {
+                // Ensure enemy model is scaled at standard factor 0.48
+                if (this.redPlayerBaseModel) {
+                    this.redPlayerBaseModel.scale.set(0.48, 0.48, 0.48);
+                    this.redPlayerBaseModel.updateMatrixWorld(true);
                 }
-            });
 
-            this.redPlayerBaseModel = SkeletonUtils.clone(gltf.scene);
-            this.redPlayerBaseModel.scale.set(0.48, 0.48, 0.48);
-            this.redPlayerBaseModel.traverse((node) => {
-                if (node.isMesh || node.isSkinnedMesh) {
-                    node.castShadow = false;
-                    node.receiveShadow = false;
-                    node.material = new THREE.MeshStandardMaterial({
-                        color: 0xef4444,
-                        roughness: 0.3,
-                        metalness: 0.1,
-                        skinning: true
-                    });
-                    node.material.needsUpdate = true;
+                // Compute bounding box height of enemy model
+                const boxEnemy = new THREE.Box3().setFromObject(this.redPlayerBaseModel);
+                const enemyHeight = boxEnemy.max.y - boxEnemy.min.y;
+
+                // Scale allied Athlete_05 model so its total height matches enemy model exactly
+                if (this.bluePlayerBaseModel) {
+                    this.bluePlayerBaseModel.scale.set(1, 1, 1);
+                    this.bluePlayerBaseModel.updateMatrixWorld(true);
+                    const boxAllied = new THREE.Box3().setFromObject(this.bluePlayerBaseModel);
+                    const alliedRawHeight = boxAllied.max.y - boxAllied.min.y;
+
+                    if (enemyHeight > 0.05 && alliedRawHeight > 0.05) {
+                        const matchScale = enemyHeight / alliedRawHeight;
+                        this.bluePlayerBaseModel.scale.set(matchScale, matchScale, matchScale);
+                    } else {
+                        this.bluePlayerBaseModel.scale.set(0.48, 0.48, 0.48);
+                    }
                 }
-            });
 
-            this.modelLoaded = true;
-            console.log('Skin_BF14 models loaded successfully!');
+                this.modelLoaded = true;
+                console.log('Player (Athlete_05) and Enemy (Skin_BF14) synchronized to identical size! Height:', enemyHeight);
+            }
         };
 
-        fetch(skinModelUrl)
-            .then(res => res.arrayBuffer())
-            .then(buffer => {
-                loader.parse(buffer, '', setupModels, (err) => {
-                    console.warn('Parse fallback:', err);
-                    loader.load(skinModelUrl, setupModels, undefined, () => this.fallbackHero());
+        const loadGLTF = (url, onSuccess, onError) => {
+            fetch(url)
+                .then(res => res.arrayBuffer())
+                .then(buffer => {
+                    loader.parse(buffer, '', onSuccess, (err) => {
+                        console.warn('Parse fallback:', err);
+                        loader.load(url, onSuccess, undefined, onError);
+                    });
+                })
+                .catch(() => {
+                    loader.load(url, onSuccess, undefined, onError);
                 });
-            })
-            .catch(() => {
-                loader.load(skinModelUrl, setupModels, undefined, () => this.fallbackHero());
-            });
+        };
+
+        // 1. Load Athlete_05.glb for allied player mobs (PRESERVE ORIGINAL COLORS / MATERIALS)
+        loadGLTF(
+            athleteModelUrl,
+            (gltf) => {
+                this.bluePlayerBaseModel = gltf.scene;
+
+                // Preserve all original textures, materials and colors
+                this.bluePlayerBaseModel.traverse((node) => {
+                    if (node.isMesh || node.isSkinnedMesh) {
+                        node.castShadow = false;
+                        node.receiveShadow = false;
+                        if (node.material) {
+                            if (Array.isArray(node.material)) {
+                                node.material.forEach(m => {
+                                    if (node.isSkinnedMesh) m.skinning = true;
+                                    m.needsUpdate = true;
+                                });
+                            } else {
+                                if (node.isSkinnedMesh) node.material.skinning = true;
+                                node.material.needsUpdate = true;
+                            }
+                        }
+                    }
+                });
+
+                athleteLoaded = true;
+                checkReady();
+            },
+            () => {
+                console.warn('Failed to load Athlete_05.glb, using fallback');
+                this.fallbackHeroBlue();
+                athleteLoaded = true;
+                checkReady();
+            }
+        );
+
+        // 2. Load Skin_BF14.glb for enemy mobs (KEEP UNCHANGED with red material)
+        loadGLTF(
+            skinModelUrl,
+            (gltf) => {
+                this.redPlayerBaseModel = gltf.scene;
+                this.redPlayerBaseModel.scale.set(0.48, 0.48, 0.48);
+                this.redPlayerBaseModel.traverse((node) => {
+                    if (node.isMesh || node.isSkinnedMesh) {
+                        node.castShadow = false;
+                        node.receiveShadow = false;
+                        node.material = new THREE.MeshStandardMaterial({
+                            color: 0xef4444,
+                            roughness: 0.3,
+                            metalness: 0.1,
+                            skinning: !!node.isSkinnedMesh
+                        });
+                        node.material.needsUpdate = true;
+                    }
+                });
+
+                enemyLoaded = true;
+                checkReady();
+            },
+            () => {
+                console.warn('Failed to load Skin_BF14.glb, using fallback');
+                this.fallbackHeroRed();
+                enemyLoaded = true;
+                checkReady();
+            }
+        );
     }
 
-    fallbackHero() {
+    fallbackHeroBlue() {
         this.bluePlayerBaseModel = new THREE.Group();
         const blueMat = new THREE.MeshStandardMaterial({ color: 0x0284c7 });
         const bHead = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 12), blueMat);
@@ -1327,7 +1394,9 @@ export class Game3D {
         const bBody = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.6), blueMat);
         bBody.position.y = 0.4;
         this.bluePlayerBaseModel.add(bBody);
+    }
 
+    fallbackHeroRed() {
         this.redPlayerBaseModel = new THREE.Group();
         const redMat = new THREE.MeshStandardMaterial({ color: 0xef4444 });
         const rHead = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 12), redMat);
@@ -1336,7 +1405,11 @@ export class Game3D {
         const rBody = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.6), redMat);
         rBody.position.y = 0.4;
         this.redPlayerBaseModel.add(rBody);
+    }
 
+    fallbackHero() {
+        this.fallbackHeroBlue();
+        this.fallbackHeroRed();
         this.modelLoaded = true;
     }
 
@@ -1348,13 +1421,18 @@ export class Game3D {
                     node.userData.initRotX = node.rotation.x;
                     node.userData.initRotY = node.rotation.y;
                     node.userData.initRotZ = node.rotation.z;
+                    node.userData.initPosY = node.position.y;
                 }
                 bones[node.name] = node;
-                const cleanName = node.name.replace(/[._]/g, '').toLowerCase();
+                const cleanName = node.name.replace(/[._:\-]/g, '').toLowerCase();
                 bones[cleanName] = node;
             }
             if (node.isSkinnedMesh && node.material) {
-                node.material.skinning = true;
+                if (Array.isArray(node.material)) {
+                    node.material.forEach(m => { m.skinning = true; });
+                } else {
+                    node.material.skinning = true;
+                }
             }
         });
         return bones;
@@ -1363,8 +1441,31 @@ export class Game3D {
     getBoneFromDict(bones, targetName) {
         if (!bones) return null;
         if (bones[targetName]) return bones[targetName];
-        const clean = targetName.replace(/[._]/g, '').toLowerCase();
+        const clean = targetName.replace(/[._:\-]/g, '').toLowerCase();
         if (bones[clean]) return bones[clean];
+
+        const synonyms = {
+            'thighl': ['leftupleg', 'thighl', 'uplegl', 'legl', 'mixamorigleftupleg', 'thighleft'],
+            'thighr': ['rightupleg', 'thighr', 'uplegr', 'legr', 'mixamorigrightupleg', 'thighright'],
+            'shinl': ['leftleg', 'shinl', 'lowerlegl', 'mixamorigleftleg', 'shinleft', 'calfleft', 'calfl'],
+            'shinr': ['rightleg', 'shinr', 'lowerlegr', 'mixamorigrightleg', 'shinright', 'calfright', 'calfr'],
+            'upperarml': ['leftarm', 'upperarml', 'arml', 'mixamorigleftarm', 'armleft', 'upperarmleft'],
+            'upperarmr': ['rightarm', 'upperarmr', 'armr', 'mixamorigrightarm', 'armright', 'upperarmright'],
+            'forearml': ['leftforearm', 'forearml', 'mixamorigleftforearm', 'forearmleft'],
+            'forearmr': ['rightforearm', 'forearmr', 'mixamorigrightforearm', 'forearmright'],
+            'spine': ['spine', 'spine1', 'spine2', 'mixamorigspine']
+        };
+
+        const list = synonyms[clean] || [];
+        for (const alias of list) {
+            if (bones[alias]) return bones[alias];
+        }
+
+        for (const key in bones) {
+            const k = key.toLowerCase();
+            if (k.endsWith(clean) || k.includes(clean)) return bones[key];
+        }
+
         return null;
     }
 
