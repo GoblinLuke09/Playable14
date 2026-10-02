@@ -5,6 +5,7 @@ import { Game3D } from './Game3D.js';
 import sfxClick from './assets/Sound/click.mp3';
 import sfxComplete from './assets/Sound/levelcomplete.mp3';
 import sfxGameover from './assets/Sound/gameover.mp3';
+import handImg from './assets/Image/hand.webp';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -18,6 +19,12 @@ export class GameScene extends Phaser.Scene {
             this.load.audio('sfx_gameover', sfxGameover);
         } catch (e) {
             console.warn('Audio preload fallback', e);
+        }
+
+        try {
+            this.load.image('hand_guide', handImg);
+        } catch (e) {
+            console.warn('Hand image preload fallback', e);
         }
 
         // Generate confetti particle texture
@@ -273,10 +280,14 @@ export class GameScene extends Phaser.Scene {
 
     createTutorialHint() {
         this.tutorialGroup = this.add.container(this.centerX, this.h * 0.76);
+        this.tutorialGroup.setDepth(150);
 
-        const hand = this.add.image(0, 0, 'icon_hand').setScale(1.4);
-        const text = this.add.text(0, 48, 'DRAG CANNON TO SHOOT!', {
-            fontFamily: '"Arial Black", Arial, sans-serif',
+        const hand = this.add.image(-55, 0, 'hand_guide');
+        hand.setDisplaySize(74, 74);
+        hand.setOrigin(0.5, 0.5);
+
+        const text = this.add.text(0, 58, 'DRAG CANNON TO SHOOT!', {
+            fontFamily: '"Arial Black", Impact, sans-serif',
             fontSize: '20px',
             color: '#ffffff',
             stroke: '#0284c7',
@@ -285,10 +296,22 @@ export class GameScene extends Phaser.Scene {
 
         this.tutorialGroup.add([hand, text]);
 
+        // Dragging left-to-right gesture animation
         this.tweens.add({
             targets: hand,
-            x: 60,
-            duration: 650,
+            x: 55,
+            duration: 750,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        // Pulsing text effect
+        this.tweens.add({
+            targets: text,
+            scaleX: 1.06,
+            scaleY: 1.06,
+            duration: 600,
             yoyo: true,
             repeat: -1,
             ease: 'Sine.easeInOut'
