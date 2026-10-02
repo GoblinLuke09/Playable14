@@ -25,8 +25,8 @@ export class Game3D {
         // Player starts on Right lane (x = -1.0, visually right)
         this.playerX = -1.0;
         this.targetPlayerX = -1.0;
-        this.minPlayerX = -2.7; // Right boundary inside railings
-        this.maxPlayerX = 3.5;  // Left boundary inside railings
+        this.minPlayerX = -2.40; // Safe clearance inside right railing (avoids arm clipping)
+        this.maxPlayerX = 3.10;  // Safe clearance inside left railing (avoids arm clipping)
         this.playerZ = 4.5;     // Positioned closer forward in camera view
 
         // Track movement
@@ -87,10 +87,11 @@ export class Game3D {
 
     initThree() {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x7da87d);
-        this.scene.fog = new THREE.FogExp2(0x567c5e, 0.009);
+        // Warm creamy sand beige sky matching the reference image exactly
+        this.scene.background = new THREE.Color(0xe8decb);
+        this.scene.fog = new THREE.FogExp2(0xe8decb, 0.0038);
 
-        // Perspective camera pulled further back behind player looking down the entire bridge track
+        // Perspective camera behind player looking down the running bridge track
         this.camera = new THREE.PerspectiveCamera(50, this.width / this.height, 0.1, 400);
         this.camera.position.set(0.4, 8.2, -10.5);
         this.camera.lookAt(0.4, 1.3, 15.0);
@@ -101,7 +102,7 @@ export class Game3D {
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.15;
+        this.renderer.toneMappingExposure = 1.18;
 
         this.renderer.domElement.style.position = 'absolute';
         this.renderer.domElement.style.top = '0';
@@ -115,13 +116,13 @@ export class Game3D {
             this.container.appendChild(this.renderer.domElement);
         }
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.15);
         this.scene.add(ambientLight);
 
-        const hemiLight = new THREE.HemisphereLight(0xdff0d8, 0x3d5c38, 0.55);
+        const hemiLight = new THREE.HemisphereLight(0xfffbf2, 0xe2d6c1, 0.7);
         this.scene.add(hemiLight);
 
-        this.dirLight = new THREE.DirectionalLight(0xfffaed, 1.4);
+        this.dirLight = new THREE.DirectionalLight(0xfffaed, 1.45);
         this.dirLight.position.set(-14, 28, -10);
         this.dirLight.castShadow = true;
         this.dirLight.shadow.mapSize.width = 2048;
@@ -153,109 +154,293 @@ export class Game3D {
     }
 
     // -----------------------------------------------------------------
-    // ENVIRONMENT: Mountain Valleys & Forest Slopes (STATIC)
+    // ENVIRONMENT: Stadium Environment with Giant Soccer Balls
     // -----------------------------------------------------------------
     createMountainEnvironment() {
-        const valleyGeo = new THREE.PlaneGeometry(350, 600, 32, 48);
-        const valleyMat = new THREE.MeshLambertMaterial({ color: 0x2e5234, roughness: 0.95 });
-        
-        const pos = valleyGeo.attributes.position;
-        for (let i = 0; i < pos.count; i++) {
-            const vx = pos.getX(i);
-            const vz = pos.getY(i);
-            const distFromCenter = Math.abs(vx);
-            const elevation = Math.pow(distFromCenter / 25, 1.9) * 4.5 + Math.sin(vz * 0.08) * 8.0 - 18;
-            pos.setZ(i, elevation);
+        // Ground plane surrounding the elevated track
+        const groundGeo = new THREE.PlaneGeometry(300, 600);
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0xe2d6c1, roughness: 0.9 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.set(0, -6.0, 100);
+        ground.receiveShadow = true;
+        this.scene.add(ground);
+
+        // Giant Soccer Balls beside the track as in the reference image
+        const ballPositions = [
+            [-5.4, 4.2, 38],
+            [6.2, 4.2, 42],
+            [-5.6, 4.5, 96],
+            [6.4, 4.5, 102],
+            [-5.5, 4.8, 160],
+            [6.5, 4.8, 165]
+        ];
+
+        ballPositions.forEach(([bx, by, bz]) => {
+            const soccerBall = this.createSoccerBallMesh();
+            soccerBall.position.set(bx, by, bz);
+            soccerBall.rotation.set(Math.random() * 2, Math.random() * 2, Math.random() * 2);
+            this.scene.add(soccerBall);
+        });
+    }
+
+    createSoccerBallMesh() {
+        if (!this._cachedSoccerGeometry) {
+            const radius = 1.5;
+            const t = (1 + Math.sqrt(5)) / 2;
+            const icoVerts = [
+                new THREE.Vector3(-1,  t,  0).normalize(),
+                new THREE.Vector3( 1,  t,  0).normalize(),
+                new THREE.Vector3(-1, -t,  0).normalize(),
+                new THREE.Vector3( 1, -t,  0).normalize(),
+                new THREE.Vector3( 0, -1,  t).normalize(),
+                new THREE.Vector3( 0,  1,  t).normalize(),
+                new THREE.Vector3( 0, -1, -t).normalize(),
+                new THREE.Vector3( 0,  1, -t).normalize(),
+                new THREE.Vector3( t,  0, -1).normalize(),
+                new THREE.Vector3( t,  0,  1).normalize(),
+                new THREE.Vector3(-t,  0, -1).normalize(),
+                new THREE.Vector3(-t,  0,  1).normalize()
+            ];
+
+            const icoFaces = [
+                [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
+                [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
+                [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
+                [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]
+            ];
+
+            // Extract 30 unique edges
+            const edgeMap = new Map();
+            const getEdgeKey = (a, b) => (a < b ? `${a}_${b}` : `${b}_${a}`);
+
+            icoFaces.forEach(f => {
+                const pairs = [[f[0], f[1]], [f[1], f[2]], [f[2], f[0]]];
+                pairs.forEach(([a, b]) => {
+                    const key = getEdgeKey(a, b);
+                    if (!edgeMap.has(key)) {
+                        edgeMap.set(key, { a, b });
+                    }
+                });
+            });
+
+            // Compute the two points on each edge at 1/3 and 2/3
+            const edgePoints = new Map();
+            edgeMap.forEach(({ a, b }, key) => {
+                const va = icoVerts[a];
+                const vb = icoVerts[b];
+
+                const pA = new THREE.Vector3().copy(va).multiplyScalar(2/3).addScaledVector(vb, 1/3).normalize().multiplyScalar(radius);
+                const pB = new THREE.Vector3().copy(va).multiplyScalar(1/3).addScaledVector(vb, 2/3).normalize().multiplyScalar(radius);
+
+                edgePoints.set(key, { pA, pB, a, b });
+            });
+
+            const sortCyclic = (pts, center) => {
+                let u = new THREE.Vector3(0, 1, 0).cross(center);
+                if (u.lengthSq() < 0.001) u = new THREE.Vector3(1, 0, 0).cross(center);
+                u.normalize();
+                const v = new THREE.Vector3().crossVectors(center, u).normalize();
+
+                const withAngles = pts.map(p => {
+                    const proj = new THREE.Vector3().subVectors(p, new THREE.Vector3().copy(center).multiplyScalar(p.dot(center) / center.lengthSq()));
+                    return { p, angle: Math.atan2(proj.dot(v), proj.dot(u)) };
+                });
+                withAngles.sort((a, b) => a.angle - b.angle);
+                const sorted = withAngles.map(item => item.p);
+
+                // Check winding order for outwards facing normal
+                const e1 = new THREE.Vector3().subVectors(sorted[1], sorted[0]);
+                const e2 = new THREE.Vector3().subVectors(sorted[2], sorted[0]);
+                const norm = new THREE.Vector3().crossVectors(e1, e2);
+                if (norm.dot(center) < 0) {
+                    sorted.reverse();
+                }
+                return sorted;
+            };
+
+            const whitePositions = [];
+            const greenPositions = [];
+
+            // 1. Build 20 Hexagons (White faces)
+            icoFaces.forEach(f => {
+                const va = icoVerts[f[0]];
+                const vb = icoVerts[f[1]];
+                const vc = icoVerts[f[2]];
+                const faceCenter = new THREE.Vector3().add(va).add(vb).add(vc).divideScalar(3).normalize();
+
+                const eAB = edgePoints.get(getEdgeKey(f[0], f[1]));
+                const eBC = edgePoints.get(getEdgeKey(f[1], f[2]));
+                const eCA = edgePoints.get(getEdgeKey(f[2], f[0]));
+
+                const hexPts = [
+                    eAB.pA, eAB.pB,
+                    eBC.pA, eBC.pB,
+                    eCA.pA, eCA.pB
+                ];
+
+                const sortedHex = sortCyclic(hexPts, faceCenter);
+
+                // Triangulate 6-gon: (0,1,2), (0,2,3), (0,3,4), (0,4,5)
+                for (let i = 1; i < 5; i++) {
+                    whitePositions.push(
+                        sortedHex[0].x, sortedHex[0].y, sortedHex[0].z,
+                        sortedHex[i].x, sortedHex[i].y, sortedHex[i].z,
+                        sortedHex[i + 1].x, sortedHex[i + 1].y, sortedHex[i + 1].z
+                    );
+                }
+            });
+
+            // 2. Build 12 Pentagons (Green faces)
+            for (let i = 0; i < 12; i++) {
+                const vertCenter = icoVerts[i];
+                const pentPts = [];
+
+                edgePoints.forEach(e => {
+                    if (e.a === i) pentPts.push(e.pA);
+                    else if (e.b === i) pentPts.push(e.pB);
+                });
+
+                const sortedPent = sortCyclic(pentPts, vertCenter);
+
+                // Triangulate 5-gon: (0,1,2), (0,2,3), (0,3,4)
+                for (let j = 1; j < 4; j++) {
+                    greenPositions.push(
+                        sortedPent[0].x, sortedPent[0].y, sortedPent[0].z,
+                        sortedPent[j].x, sortedPent[j].y, sortedPent[j].z,
+                        sortedPent[j + 1].x, sortedPent[j + 1].y, sortedPent[j + 1].z
+                    );
+                }
+            }
+
+            const geo = new THREE.BufferGeometry();
+            const allPositions = new Float32Array([...whitePositions, ...greenPositions]);
+            geo.setAttribute('position', new THREE.BufferAttribute(allPositions, 3));
+
+            const whiteVertCount = whitePositions.length / 3;
+            const greenVertCount = greenPositions.length / 3;
+
+            geo.addGroup(0, whiteVertCount, 0); // Material 0: White
+            geo.addGroup(whiteVertCount, greenVertCount, 1); // Material 1: Green
+
+            geo.computeVertexNormals();
+            this._cachedSoccerGeometry = geo;
         }
-        valleyGeo.computeVertexNormals();
 
-        const valleyMesh = new THREE.Mesh(valleyGeo, valleyMat);
-        valleyMesh.rotation.x = -Math.PI / 2;
-        valleyMesh.position.set(0, -6.5, 120);
-        valleyMesh.receiveShadow = true;
-        this.scene.add(valleyMesh); // STATIC in scene
+        const whiteMat = new THREE.MeshStandardMaterial({
+            color: 0xf8fafc,
+            roughness: 0.28,
+            metalness: 0.05,
+            flatShading: true
+        });
+        const greenMat = new THREE.MeshStandardMaterial({
+            color: 0x15803d, // Classic soccer dark green
+            roughness: 0.28,
+            metalness: 0.05,
+            flatShading: true
+        });
 
-        // Procedural pine trees (STATIC in scene)
-        const treeTrunkGeo = new THREE.CylinderGeometry(0.3, 0.45, 2.5, 6);
-        const treeFoliageGeo = new THREE.ConeGeometry(2.4, 6.0, 7);
-        const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3220 });
-        const foliageMat1 = new THREE.MeshLambertMaterial({ color: 0x1e4620 });
-        const foliageMat2 = new THREE.MeshLambertMaterial({ color: 0x2d5e30 });
-
-        for (let i = 0; i < 90; i++) {
-            const side = (i % 2 === 0) ? 1 : -1;
-            const tx = side * (12 + Math.random() * 65);
-            const tz = -20 + Math.random() * 260;
-            const ty = Math.pow(Math.abs(tx) / 25, 1.9) * 4.5 - 18;
-
-            const treeGroup = new THREE.Group();
-            treeGroup.position.set(tx, ty, tz);
-
-            const trunk = new THREE.Mesh(treeTrunkGeo, trunkMat);
-            trunk.position.y = 1.25;
-            treeGroup.add(trunk);
-
-            const foliageMat = (i % 3 === 0) ? foliageMat1 : foliageMat2;
-            const foliage = new THREE.Mesh(treeFoliageGeo, foliageMat);
-            foliage.position.y = 4.6;
-            treeGroup.add(foliage);
-
-            const scale = 0.8 + Math.random() * 0.9;
-            treeGroup.scale.set(scale, scale, scale);
-            this.scene.add(treeGroup); // STATIC in scene
-        }
+        const ball = new THREE.Mesh(this._cachedSoccerGeometry, [whiteMat, greenMat]);
+        ball.castShadow = true;
+        ball.receiveShadow = true;
+        return ball;
     }
 
     // -----------------------------------------------------------------
-    // BRIDGE TRACKS (In World Container)
+    // BRIDGE TRACKS (Red Athletic Track + Alternating Green Striped Track + White Fence)
     // -----------------------------------------------------------------
     createBridgeTracks() {
-        const trackLength = this.totalTrackLength + 80;
+        const trackLength = this.totalTrackLength + 100;
         this.trackGroup = new THREE.Group();
 
-        const concreteRoadMat = new THREE.MeshStandardMaterial({
-            color: 0xb5bcc4,
-            roughness: 0.8,
+        // 1. Red Athletic Track on Screen-Left (~70% compact width, from x = 1.65 to x = 3.60, width = 1.95m)
+        const redTrackWidth = 1.95;
+        const redTrackCenter = 2.625;
+        const redTrackGeo = new THREE.PlaneGeometry(redTrackWidth, trackLength);
+        const redTrackMat = new THREE.MeshStandardMaterial({
+            color: 0xc45240, // Terracotta red running track
+            roughness: 0.7,
             metalness: 0.05
         });
-        const bridgeUndersideMat = new THREE.MeshStandardMaterial({
-            color: 0x5a6068,
-            roughness: 0.9
+        const redTrack = new THREE.Mesh(redTrackGeo, redTrackMat);
+        redTrack.rotation.x = -Math.PI / 2;
+        redTrack.position.set(redTrackCenter, 0.01, trackLength / 2 - 20);
+        redTrack.receiveShadow = true;
+        this.trackGroup.add(redTrack);
+
+        // White Lane Stripes on Red Track (compact 3 lanes)
+        const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        [1.85, 2.25, 2.62, 3.00, 3.38].forEach(lx => {
+            const lineGeo = new THREE.PlaneGeometry(0.035, trackLength);
+            const lineMesh = new THREE.Mesh(lineGeo, lineMat);
+            lineMesh.rotation.x = -Math.PI / 2;
+            lineMesh.position.set(lx, 0.015, trackLength / 2 - 20);
+            this.trackGroup.add(lineMesh);
         });
-        const dashedLineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
-        // 1. Single Unified Bridge Road Deck (wider road deck from x = -3.0 to x = 3.8)
-        const roadWidth = 6.8;
-        const roadCenter = 0.4;
-        const mainRoadGeo = new THREE.BoxGeometry(roadWidth, 0.6, trackLength);
-        const mainRoad = new THREE.Mesh(mainRoadGeo, concreteRoadMat);
-        mainRoad.position.set(roadCenter, -0.3, trackLength / 2 - 20);
-        mainRoad.receiveShadow = true;
-        this.trackGroup.add(mainRoad);
+        // 2. Dark Forest Green Curbs (Both Outer Borders & Middle Divider)
+        const curbMat = new THREE.MeshStandardMaterial({
+            color: 0x386340, // Forest green curb
+            roughness: 0.7
+        });
 
-        // Dashed lane divider lines
-        const dashLength = 3.0;
-        const dashGap = 3.0;
-        const dashGeo = new THREE.PlaneGeometry(0.12, dashLength);
-        for (let z = -10; z < trackLength; z += (dashLength + dashGap)) {
-            // Center divider between Left and Right lane
-            const dashCenter = new THREE.Mesh(dashGeo, dashedLineMat);
-            dashCenter.rotation.x = -Math.PI / 2;
-            dashCenter.position.set(0.70, 0.01, z);
-            this.trackGroup.add(dashCenter);
+        // Center Green Divider Curb separating Red Track and Green Track (at x = 1.65)
+        const centerCurb = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.14, trackLength), curbMat);
+        centerCurb.position.set(1.65, 0.04, trackLength / 2 - 20);
+        centerCurb.receiveShadow = true;
+        this.trackGroup.add(centerCurb);
 
-            // Right lane guide dash
-            const dashRight = new THREE.Mesh(dashGeo, dashedLineMat);
-            dashRight.rotation.x = -Math.PI / 2;
-            dashRight.position.set(-1.15, 0.01, z);
-            this.trackGroup.add(dashRight);
+        // 3. Main Track on Screen-Right: Alternating Green Stripes (from x = -2.95 to x = 1.65, width = 4.60m)
+        const greenWidth = 4.60;
+        const greenCenter = -0.675;
+        const stripeLength = 6.0;
+
+        const darkGreenMat = new THREE.MeshStandardMaterial({
+            color: 0x559c63, // Grass green
+            roughness: 0.65,
+            metalness: 0.05
+        });
+        const lightGreenMat = new THREE.MeshStandardMaterial({
+            color: 0xcbf3d2, // Light pastel mint green
+            roughness: 0.65,
+            metalness: 0.05
+        });
+
+        const segmentGeo = new THREE.PlaneGeometry(greenWidth, stripeLength);
+        let stripeIdx = 0;
+        for (let z = -20; z < trackLength; z += stripeLength) {
+            const mat = (stripeIdx % 2 === 0) ? darkGreenMat : lightGreenMat;
+            const segment = new THREE.Mesh(segmentGeo, mat);
+            segment.rotation.x = -Math.PI / 2;
+            segment.position.set(greenCenter, 0.01, z + stripeLength / 2);
+            segment.receiveShadow = true;
+            this.trackGroup.add(segment);
+            stripeIdx++;
         }
+
+        // 4. Outer Dark Forest Green Curbs
+        const leftCurb = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, trackLength), curbMat);
+        leftCurb.position.set(-2.95, 0.04, trackLength / 2 - 20);
+        leftCurb.receiveShadow = true;
+        this.trackGroup.add(leftCurb);
+
+        const rightCurb = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, trackLength), curbMat);
+        rightCurb.position.set(3.68, 0.04, trackLength / 2 - 20);
+        rightCurb.receiveShadow = true;
+        this.trackGroup.add(rightCurb);
+
+        // Base deck
+        const deckMat = new THREE.MeshStandardMaterial({ color: 0x274a2e, roughness: 0.9 });
+        const deck = new THREE.Mesh(new THREE.BoxGeometry(7.0, 0.5, trackLength), deckMat);
+        deck.position.set(0.35, -0.26, trackLength / 2 - 20);
+        this.trackGroup.add(deck);
 
         // Underside pillars
         const pillarGeo = new THREE.CylinderGeometry(0.8, 1.0, 24, 12);
+        const pillarMat = new THREE.MeshStandardMaterial({ color: 0x4a6b52, roughness: 0.9 });
         for (let z = -10; z < trackLength; z += 30) {
-            [-1.2, 2.0].forEach(px => {
-                const pillar = new THREE.Mesh(pillarGeo, bridgeUndersideMat);
+            [-1.8, 2.2].forEach(px => {
+                const pillar = new THREE.Mesh(pillarGeo, pillarMat);
                 pillar.position.set(px, -12.3, z);
                 pillar.castShadow = true;
                 pillar.receiveShadow = true;
@@ -263,89 +448,103 @@ export class Game3D {
             });
         }
 
-        this.createBridgeRailings(trackLength);
-        this.scene.add(this.trackGroup); // Bridge stays 100% static in scene
+        // 5. White Post-and-Rail Fence along both outer sides
+        this.createWhiteRailings(trackLength);
+
+        this.scene.add(this.trackGroup);
     }
 
-    createBridgeRailings(trackLength) {
-        const postGeo = new THREE.BoxGeometry(0.16, 1.15, 0.16);
-        // Reddish-brown bridge railing material matching the image
-        const railMat = new THREE.MeshStandardMaterial({ color: 0x823838, roughness: 0.65 });
-        const barMat = new THREE.MeshStandardMaterial({ color: 0x6e2c2c, roughness: 0.6 });
+    createWhiteRailings(trackLength) {
+        const whiteMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            roughness: 0.35,
+            metalness: 0.1
+        });
 
-        // Outer Railings
-        this.buildRailingRun(-2.95, -20, trackLength, railMat, barMat, postGeo);
-        this.buildRailingRun(3.75, -20, trackLength, railMat, barMat, postGeo);
+        const panelLength = 1.35;
+        const gap = 0.85;
+        const step = panelLength + gap; // 2.2m step between panels
 
-        // Center Divider Railing separating Left Lane (+1 gates) and Right Lane (Enemies)
-        this.buildRailingRun(0.65, 16.0, trackLength, railMat, barMat, postGeo);
-    }
+        const postGeo = new THREE.BoxGeometry(0.08, 0.82, 0.08);
+        const capGeo = new THREE.BoxGeometry(0.10, 0.035, 0.10);
+        const topRailGeo = new THREE.BoxGeometry(0.06, 0.06, panelLength);
+        const midRailGeo = new THREE.BoxGeometry(0.045, 0.045, panelLength);
 
-    buildRailingRun(rx, startZ, endZ, railMat, barMat, postGeo) {
-        const len = endZ - startZ;
-        const topRail = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, len), railMat);
-        topRail.position.set(rx, 0.95, startZ + len / 2);
-        this.trackGroup.add(topRail);
+        // Outer railings run full length; middle dividing railing starts from yellow Box 3 (z = 15.0)
+        const railings = [
+            { x: -2.95, startZ: -20, endZ: trackLength }, // Outer Right Railing
+            { x: 1.65, startZ: 15.0, endZ: trackLength }, // Middle Dividing Railing (starts at yellow Box 3)
+            { x: 3.60, startZ: -20, endZ: trackLength }  // Outer Left Railing
+        ];
 
-        const midRail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, len), railMat);
-        midRail.position.set(rx, 0.45, startZ + len / 2);
-        this.trackGroup.add(midRail);
+        railings.forEach(({ x, startZ, endZ }) => {
+            for (let z = startZ; z <= endZ - panelLength; z += step) {
+                const centerZ = z + panelLength / 2;
+                const postOffset = panelLength / 2 - 0.04;
 
-        const bottomRail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, len), railMat);
-        bottomRail.position.set(rx, 0.12, startZ + len / 2);
-        this.trackGroup.add(bottomRail);
+                // Top Rail of Panel
+                const topRail = new THREE.Mesh(topRailGeo, whiteMat);
+                topRail.position.set(x, 0.72, centerZ);
+                topRail.castShadow = true;
+                this.trackGroup.add(topRail);
 
-        for (let z = startZ; z <= endZ; z += 3.2) {
-            const post = new THREE.Mesh(postGeo, railMat);
-            post.position.set(rx, 0.58, z);
-            post.castShadow = true;
-            this.trackGroup.add(post);
+                // Mid Rail of Panel
+                const midRail = new THREE.Mesh(midRailGeo, whiteMat);
+                midRail.position.set(x, 0.38, centerZ);
+                midRail.castShadow = true;
+                this.trackGroup.add(midRail);
 
-            for (let subZ = z + 0.5; subZ < z + 3.0 && subZ < endZ; subZ += 0.5) {
-                const bal = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.85, 6), barMat);
-                bal.position.set(rx, 0.55, subZ);
-                this.trackGroup.add(bal);
+                // Left & Right Vertical Posts for this Panel
+                [-postOffset, postOffset].forEach(pz => {
+                    const post = new THREE.Mesh(postGeo, whiteMat);
+                    post.position.set(x, 0.42, centerZ + pz);
+                    post.castShadow = true;
+                    post.receiveShadow = true;
+                    this.trackGroup.add(post);
+
+                    const cap = new THREE.Mesh(capGeo, whiteMat);
+                    cap.position.set(x, 0.84, centerZ + pz);
+                    this.trackGroup.add(cap);
+                });
             }
-        }
+        });
     }
 
     // -----------------------------------------------------------------
     // COURSE LAYOUT
     // -----------------------------------------------------------------
     createCourseLayout() {
-        // 1. VISUAL LEFT LANE: Box 3 with Gun (AK-47) is right at the head of the dividing railing (z = 16.0)
+        // 1. VISUAL LEFT LANE: Box 3 with Gun (Weapon_1) on the 70% compact red track (x = 2.62)
         const box3 = this.createNumberCrateStack({
-            x: 2.20,
+            x: 2.62,
             z: 16.0,
-            width: 2.9,
+            width: 1.85,
             height: 1.0,
-            depth: 1.4,
+            depth: 1.3,
             hp: 3,
             label: '3',
-            hasWeapon: true, // Gun floating on top of box 3!
-            isStationary: true // Stays in place blocking left gates until destroyed!
+            hasWeapon: true,
+            isStationary: true
         });
         this.boxObstacles.push(box3);
 
-        // Densely packed continuous row of +1 gates along left lane starting right behind Box 3
-        for (let z = 18.2; z <= 260; z += 1.8) {
-            const gate = this.createLeftBoosterGate(2.20, z, '+1');
+        // Continuous row of +1 gates along the compact left lane
+        for (let z = 18.2; z <= 260; z += 5.4) {
+            const gate = this.createLeftBoosterGate(2.62, z, '+1');
             this.leftGates.push(gate);
         }
 
-        // 2. VISUAL RIGHT LANE: Colossal Swarm of Red Minions spread across entire lane width
-        // 350 red minions spread evenly from right railing to center dividing railing
+        // 2. VISUAL RIGHT LANE: Colossal Swarm of Red Minions spread across the wide green track
         const minionCount = 350;
         for (let i = 0; i < minionCount; i++) {
             const progress = i / minionCount;
-            // Dense Z progression in front of the boss
             const z = 34 + progress * 88 + (Math.random() - 0.5) * 3.5;
-            // Spread across the full width of the right lane (from -2.72 to 0.42)
-            const x = -2.72 + Math.random() * 3.14;
+            // Spread across the right green track safely inside railings (from -2.35 to 1.20)
+            const x = -2.35 + Math.random() * 3.55;
             this.spawnRedMinion(x, z, { hp: 2 });
         }
 
-        // Giant Red Boss standing at original position (z = 126) behind the red army
+        // Giant Red Boss standing on the green track (z = 126) behind the red army
         this.createFinalBoss(126, { hp: 38000, maxHp: 38000 });
     }
 
@@ -630,8 +829,8 @@ export class Game3D {
         const group = new THREE.Group();
         group.position.set(x, 0, z);
 
-        const width = 2.8;
-        const height = 2.6;
+        const width = 1.85;
+        const height = 2.4;
 
         const frameMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
         const postL = new THREE.Mesh(new THREE.BoxGeometry(0.08, height, 0.08), frameMat);
@@ -667,7 +866,7 @@ export class Game3D {
         });
         const gTexture = new THREE.CanvasTexture(gCanvas);
         const gMat = new THREE.MeshBasicMaterial({ map: gTexture, transparent: true, side: THREE.DoubleSide });
-        const textMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.05), gMat);
+        const textMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.85), gMat);
         textMesh.position.set(0, height * 0.48, 0.05);
         group.add(textMesh);
 
@@ -820,7 +1019,7 @@ export class Game3D {
         const group = new THREE.Group();
         group.position.set(-1.1, 0, z);
 
-        const bossHp = config.hp || 3800;
+        const bossHp = config.hp || 38000;
         this.finalBoss = {
             group: group,
             model: null,
@@ -830,37 +1029,50 @@ export class Game3D {
             hp: bossHp,
             maxHp: bossHp,
             isDestroyed: false,
-            hpTextSprite: null,
             hpBarMesh: null
         };
 
-        // 1. Floating Boss HP Text badge
-        const hpSprite = this.createTextSprite(`BOSS: ${bossHp}`, {
-            fontSize: 64,
-            textColor: '#facc15',
-            strokeColor: '#991b1b',
-            strokeWidth: 16
-        });
-        hpSprite.position.set(0, 5.8, 0);
-        hpSprite.scale.set(3.4, 1.2, 1);
-        group.add(hpSprite);
-        this.finalBoss.hpTextSprite = hpSprite;
+        // Health Bar above Boss (Positioned cleanly at y = 7.6m with left-pivot fill)
+        const barW = 3.8;
+        const barH = 0.42;
 
-        // 2. Health Bar Background & Fill
-        const barW = 3.6;
-        const barH = 0.35;
-        const barBg = new THREE.Mesh(new THREE.PlaneGeometry(barW, barH), new THREE.MeshBasicMaterial({ color: 0x1e293b, side: THREE.DoubleSide }));
-        barBg.position.set(0, 5.0, 0.01);
-        group.add(barBg);
+        const hpBarContainer = new THREE.Group();
+        hpBarContainer.position.set(0, 7.6, 0);
+        hpBarContainer.rotation.x = 0.38; // Tilted towards the camera
 
-        const barFill = new THREE.Mesh(new THREE.PlaneGeometry(barW, barH), new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide }));
-        barFill.position.set(0, 5.0, 0.02);
-        group.add(barFill);
+        // Dark Background Border
+        const barBorder = new THREE.Mesh(
+            new THREE.PlaneGeometry(barW + 0.16, barH + 0.12),
+            new THREE.MeshBasicMaterial({ color: 0x0f172a, side: THREE.DoubleSide, depthTest: false })
+        );
+        barBorder.renderOrder = 998;
+        hpBarContainer.add(barBorder);
+
+        const barBg = new THREE.Mesh(
+            new THREE.PlaneGeometry(barW, barH),
+            new THREE.MeshBasicMaterial({ color: 0x334155, side: THREE.DoubleSide, depthTest: false })
+        );
+        barBg.position.z = 0.01;
+        barBg.renderOrder = 998;
+        hpBarContainer.add(barBg);
+
+        // Fill bar anchored at left edge
+        const barFillGeo = new THREE.PlaneGeometry(barW, barH);
+        barFillGeo.translate(barW / 2, 0, 0); // Translate so scaling x shrinks from right to left!
+        const barFill = new THREE.Mesh(
+            barFillGeo,
+            new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide, depthTest: false })
+        );
+        barFill.position.set(-barW / 2, 0, 0.02);
+        barFill.renderOrder = 999;
+        hpBarContainer.add(barFill);
         this.finalBoss.hpBarMesh = barFill;
 
+        group.add(hpBarContainer);
+
         // 3. Glowing Boss ground ring
-        const ringGeo = new THREE.RingGeometry(1.4, 1.9, 32);
-        const ringMat = new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+        const ringGeo = new THREE.RingGeometry(1.6, 2.2, 32);
+        const ringMat = new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide, transparent: true, opacity: 0.65 });
         const ring = new THREE.Mesh(ringGeo, ringMat);
         ring.rotation.x = -Math.PI / 2;
         ring.position.y = 0.05;
@@ -1423,7 +1635,7 @@ export class Game3D {
                         if (!this.finalBoss || !this.finalBoss.isDestroyed) {
                             const bossDist = Math.max(10, this.finalBoss.localZ - this.distanceTravelled - 8);
                             minion.localZ = this.distanceTravelled + 35 + Math.random() * (bossDist - 5);
-                            minion.baseLocalX = -2.72 + Math.random() * 3.14;
+                            minion.baseLocalX = -2.35 + Math.random() * 3.55;
                             minion.localX = minion.baseLocalX;
                             minion.group.position.x = minion.localX;
                             minion.group.position.z = minion.localZ;
@@ -1463,17 +1675,6 @@ export class Game3D {
 
                 if (dz > -0.8 && dz < 2.4 && dx < 2.5) {
                     boss.hp -= b.damage;
-
-                    if (boss.hpTextSprite && boss.hpTextSprite.userData && boss.hpTextSprite.userData.ctx) {
-                        this.renderTextOnCanvas(
-                            boss.hpTextSprite.userData.ctx,
-                            boss.hpTextSprite.userData.canvas.width,
-                            boss.hpTextSprite.userData.canvas.height,
-                            `BOSS: ${Math.max(0, Math.ceil(boss.hp))}`,
-                            boss.hpTextSprite.userData.options
-                        );
-                        boss.hpTextSprite.userData.texture.needsUpdate = true;
-                    }
 
                     if (boss.hpBarMesh) {
                         const ratio = Math.max(0, boss.hp / boss.maxHp);
@@ -1577,7 +1778,11 @@ export class Game3D {
 
             if (this.isGameActive && !this.isLevelFinished) {
                 // Dynamic chaotic jostling & forward surge
-                m.localX = m.baseLocalX + Math.sin(this.animTime * m.wobbleSpeed + m.wobblePhase) * m.wobbleAmp;
+                m.localX = THREE.MathUtils.clamp(
+                    m.baseLocalX + Math.sin(this.animTime * m.wobbleSpeed + m.wobblePhase) * m.wobbleAmp,
+                    -2.40,
+                    3.10
+                );
                 m.localZ += m.driftSpeed * delta * 0.35;
                 m.group.position.x = m.localX;
                 m.group.position.z = m.localZ;
@@ -1656,7 +1861,7 @@ export class Game3D {
                 if (!this.finalBoss || !this.finalBoss.isDestroyed) {
                     const bossDist = Math.max(10, this.finalBoss.localZ - this.distanceTravelled - 8);
                     minion.localZ = this.distanceTravelled + 35 + Math.random() * (bossDist - 5);
-                    minion.baseLocalX = -2.72 + Math.random() * 3.14;
+                    minion.baseLocalX = -2.35 + Math.random() * 3.55;
                     minion.localX = minion.baseLocalX;
                     minion.group.position.x = minion.localX;
                     minion.group.position.z = minion.localZ;
@@ -1734,8 +1939,8 @@ export class Game3D {
             targetActionName = 'run';
         }
 
-        const roadMinX = -2.75;
-        const roadMaxX = 3.55;
+        const roadMinX = -2.40;
+        const roadMaxX = 3.10;
 
         this.squad.forEach((member) => {
             let curOffsetX = member.targetOffsetX;
@@ -1886,15 +2091,21 @@ export class Game3D {
 
     createTextSprite(text, options = {}) {
         const canvas = document.createElement('canvas');
-        canvas.width = 256;
-        canvas.height = 128;
+        canvas.width = options.width || 512;
+        canvas.height = options.height || 128;
         const ctx = canvas.getContext('2d');
 
         this.renderTextOnCanvas(ctx, canvas.width, canvas.height, text, options);
 
         const texture = new THREE.CanvasTexture(canvas);
-        const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+        const spriteMat = new THREE.SpriteMaterial({
+            map: texture,
+            transparent: true,
+            depthTest: false,
+            depthWrite: false
+        });
         const sprite = new THREE.Sprite(spriteMat);
+        sprite.renderOrder = 999;
         sprite.userData = { canvas: canvas, ctx: ctx, texture: texture, options: options };
         return sprite;
     }
