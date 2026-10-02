@@ -269,21 +269,21 @@ export class GameScene extends Phaser.Scene {
     createTutorialHint() {
         this.tutorialGroup = this.add.container(this.centerX, this.h * 0.74);
 
-        const hand = this.add.image(0, 0, 'icon_hand').setScale(0.85);
-        const text = this.add.text(0, 62, 'DRAG CANNON TO SHOOT!', {
+        const hand = this.add.image(110, 0, 'icon_hand').setScale(0.42);
+        const text = this.add.text(0, 50, 'DRAG CANNON TO SHOOT!', {
             fontFamily: '"Arial Black", Impact, Arial, sans-serif',
-            fontSize: '20px',
+            fontSize: '18px',
             color: '#ffffff',
             stroke: '#0284c7',
-            strokeThickness: 6
+            strokeThickness: 5
         }).setOrigin(0.5);
 
         this.tutorialGroup.add([hand, text]);
 
         this.tweens.add({
             targets: hand,
-            x: 75,
-            duration: 700,
+            x: -110,
+            duration: 900,
             yoyo: true,
             repeat: -1,
             ease: 'Sine.easeInOut'
