@@ -54,6 +54,9 @@ export class GameScene extends Phaser.Scene {
         this.gameStarted = false;
         this.isComplete = false;
 
+        window.showStore = () => this.ShowStore();
+        window.ShowStore = () => this.ShowStore();
+
         this.initWebAudioSynth();
 
         if (this.game && this.game.canvas) {
@@ -270,6 +273,11 @@ export class GameScene extends Phaser.Scene {
         if (typeof window.gameStart === 'function') {
             window.gameStart();
         }
+
+        // Tự động showStore sau 8s kể từ khi bắt đầu chơi (kích hoạt 1 lần duy nhất)
+        this.time.delayedCall(8000, () => {
+            this.ShowStore();
+        });
     }
 
     handleShoot() {

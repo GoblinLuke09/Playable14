@@ -3,7 +3,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import heroModelUrl from './assets/Model/Hero_02.glb';
 import skinModelUrl from './assets/Model/Skin_BF14.glb';
-import bossModelUrl from './assets/Model/Athlete_05.glb';
+import athleteModelUrl from './assets/Model/Athlete_05.glb';
 import weapon1Url from './assets/images/weapon_1.webp';
 
 export class Game3D {
@@ -39,6 +39,7 @@ export class Game3D {
         this.isBox23Destroyed = false; // Box 23 stays stationary blocking left gates
         this.leftGatesDistance = 0;    // Left gates only start moving when Box 23 is destroyed!
         this.leftGatesSpeed = 26.0;    // High speed rushing booster stream (3.5x faster than worldSpeed)
+        this.leftGateSpacing = 5.4;    // 3x wider spacing between gates (previously 1.8)
 
         // Weapon assets & state
         const texLoader = new THREE.TextureLoader();
@@ -56,6 +57,7 @@ export class Game3D {
         this.basePlayerModel = null;
         this.baseEnemyModel = null;
         this.baseBossModel = null;
+        this.enemyAnimations = [];
         this.bossAnimations = [];
         this.finalBoss = null;
         this.modelLoaded = false;
@@ -409,8 +411,8 @@ export class Game3D {
         });
         this.boxObstacles.push(box23);
 
-        // Dense continuous stream of +1 gates along left lane (moves ONLY after Box 23 is destroyed)
-        for (let z = 28; z <= 240; z += 1.8) {
+        // Continuous stream of +1 gates along left lane (moves ONLY after Box 23 is destroyed)
+        for (let z = 28; z <= 240; z += this.leftGateSpacing) {
             const gate = this.createLeftBoosterGate(2.45, z, '+1');
             this.leftGates.push(gate);
         }
@@ -908,7 +910,7 @@ export class Game3D {
         group.add(hpSprite);
         enemyObj.hpTextSprite = hpSprite;
 
-        if (this.basePlayerModel) {
+        if (this.baseEnemyModel || this.baseBossModel || this.basePlayerModel) {
             this.setupEnemyMesh(enemyObj);
         } else {
             this.setupProceduralEnemyMesh(enemyObj);
@@ -919,7 +921,7 @@ export class Game3D {
     }
 
     setupEnemyMesh(enemyObj) {
-        const baseModel = this.baseEnemyModel || this.basePlayerModel;
+        const baseModel = this.baseEnemyModel || this.baseBossModel || this.basePlayerModel;
         if (!baseModel) return;
         try {
             if (enemyObj.proceduralGroup) {
@@ -934,22 +936,25 @@ export class Game3D {
             m.scale.set(0.72, 0.72, 0.72);
             m.rotation.y = Math.PI; // Face towards player
 
-            const blueMat = new THREE.MeshStandardMaterial({
-                color: 0x1d4ed8,
-                roughness: 0.35,
-                metalness: 0.25
-            });
-
             m.traverse(node => {
                 if (node.isMesh || node.isSkinnedMesh) {
-                    node.material = blueMat;
                     node.frustumCulled = false;
                     node.castShadow = true;
                     node.receiveShadow = true;
                 }
             });
 
-            if (this.clips && this.clips.run) {
+            const anims = (this.enemyAnimations && this.enemyAnimations.length > 0)
+                ? this.enemyAnimations
+                : (this.bossAnimations && this.bossAnimations.length > 0 ? this.bossAnimations : null);
+
+            if (anims && anims.length > 0) {
+                const mixer = new THREE.AnimationMixer(m);
+                const action = mixer.clipAction(anims[0]);
+                action.play();
+                mixer.setTime(Math.random() * 1.2);
+                enemyObj.mixer = mixer;
+            } else if (this.clips && this.clips.run) {
                 const mixer = new THREE.AnimationMixer(m);
                 const action = mixer.clipAction(this.clips.run);
                 action.play();
@@ -1110,9 +1115,14 @@ export class Game3D {
 
     loadBossModel() {
         const loader = new GLTFLoader();
-        loader.load(bossModelUrl, (gltf) => {
+        loader.load(athleteModelUrl, (gltf) => {
             this.baseBossModel = gltf.scene;
             this.bossAnimations = gltf.animations || [];
+            if (!this.baseEnemyModel) {
+                this.baseEnemyModel = gltf.scene;
+                this.enemyAnimations = gltf.animations || [];
+                this.enemies.forEach(e => this.setupEnemyMesh(e));
+            }
             this.setupBossMesh();
         }, undefined, (err) => {
             console.warn('Fallback loading boss model', err);
@@ -1121,7 +1131,7 @@ export class Game3D {
     }
 
     // -----------------------------------------------------------------
-    // 3D MODEL LOADING: Skin_BF14 & Hero_02
+    // 3D MODEL LOADING: Athlete_05 & Hero_02
     // -----------------------------------------------------------------
     loadPlayerModel() {
         const loader = new GLTFLoader();
@@ -1162,6 +1172,7 @@ export class Game3D {
 
         const setupEnemy = (gltf) => {
             this.baseEnemyModel = gltf.scene;
+            this.enemyAnimations = gltf.animations || [];
             this.baseEnemyModel.scale.set(0.72, 0.72, 0.72);
 
             this.baseEnemyModel.traverse((node) => {
@@ -1177,17 +1188,17 @@ export class Game3D {
             });
         };
 
-        fetch(skinModelUrl)
+        fetch(athleteModelUrl)
             .then(res => res.arrayBuffer())
             .then(buffer => {
                 loader.parse(buffer, '', (gltf) => {
                     setupEnemy(gltf);
                 }, () => {
-                    loader.load(skinModelUrl, setupEnemy, undefined, () => {});
+                    loader.load(athleteModelUrl, setupEnemy, undefined, () => {});
                 });
             })
             .catch(() => {
-                loader.load(skinModelUrl, setupEnemy, undefined, () => {});
+                loader.load(athleteModelUrl, setupEnemy, undefined, () => {});
             });
     }
 
@@ -1731,7 +1742,7 @@ export class Game3D {
                 this.leftGatesGroup.position.z = -this.leftGatesDistance;
 
                 // Infinite conveyor wrapping loop
-                const totalSpan = this.leftGates.length * 1.8;
+                const totalSpan = this.leftGates.length * this.leftGateSpacing;
                 this.leftGates.forEach(lg => {
                     const worldZ = lg.localZ - this.leftGatesDistance;
                     if (worldZ < -12) {
