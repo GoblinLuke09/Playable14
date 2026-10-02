@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import heroModelUrl from './assets/Model/Hero_02.glb';
 import skinModelUrl from './assets/Model/Skin_BF14.glb';
 import bossModelUrl from './assets/Model/Athlete_05.glb';
+import weapon1Url from './assets/images/weapon_1.webp';
 
 export class Game3D {
     constructor(container, options = {}) {
@@ -37,15 +39,21 @@ export class Game3D {
         this.isBox23Destroyed = false; // Box 23 stays stationary blocking left gates
         this.leftGatesDistance = 0;    // Left gates only start moving when Box 23 is destroyed!
 
+        // Weapon assets & state
+        const texLoader = new THREE.TextureLoader();
+        this.weapon1Texture = texLoader.load(weapon1Url);
+        this.isWeaponUpgraded = false;
+
         // Shooting stats
         this.fireTimer = 0;
-        this.fireInterval = 0.12;
+        this.fireInterval = 0.22;
         this.bulletPower = 1;
         this.bullets = [];
 
         // Squad members (starts with 1 player, grows with gates)
         this.squad = [];
         this.basePlayerModel = null;
+        this.baseEnemyModel = null;
         this.baseBossModel = null;
         this.bossAnimations = [];
         this.finalBoss = null;
@@ -72,6 +80,7 @@ export class Game3D {
         this.createBridgeTracks();
         this.createCourseLayout();
         this.loadPlayerModel();
+        this.loadEnemyModel();
         this.loadBossModel();
         this.setupEventListeners();
         this.renderer.render(this.scene, this.camera);
@@ -341,9 +350,9 @@ export class Game3D {
             this.leftGates.push(gate);
         }
 
-        // 2. VISUAL RIGHT LANE (x = -1.0): Gate "+7", Box "89", Blue Monster, Box "192", Gate "+10", Box "785" with Gun
-        const gate7 = this.createTranslucentGate(-1.0, 32, { type: 'add', val: 7, label: '+7' });
-        this.gates.push(gate7);
+        // 2. VISUAL RIGHT LANE (x = -1.0): Gate "+1" (widens and increments on bullet hits), Box "89", Blue Monster, Box "192", Gate "+10", Box "785" with Gun
+        const gate1 = this.createTranslucentGate(-1.0, 32, { type: 'add', val: 1, label: '+1', isDynamic: true, initialWidth: 3.2, maxWidth: 4.2 });
+        this.gates.push(gate1);
 
         const box89 = this.createNumberCrateStack({
             x: -1.0,
@@ -369,8 +378,8 @@ export class Game3D {
         });
         this.boxObstacles.push(box192);
 
-        // Gate +10 ahead
-        const gate10 = this.createTranslucentGate(-1.0, 116, { type: 'add', val: 10, label: '+10' });
+        // Gate +10 ahead (fixed value)
+        const gate10 = this.createTranslucentGate(-1.0, 116, { type: 'add', val: 10, label: '+10', isDynamic: false });
         this.gates.push(gate10);
 
         const box785 = this.createNumberCrateStack({
@@ -426,14 +435,12 @@ export class Game3D {
 
         let weaponModel = null;
         if (config.hasWeapon) {
-            weaponModel = this.createAK47Model();
-            weaponModel.position.set(0, height + 0.55, 0);
-            weaponModel.scale.set(1.4, 1.4, 1.4);
-            weaponModel.rotation.set(0, Math.PI / 2, 0);
+            weaponModel = this.createFloatingWeaponMesh();
+            weaponModel.position.set(0, height + 0.65, 0);
             group.add(weaponModel);
             this.floatingWeapons.push({
                 model: weaponModel,
-                baseY: height + 0.55,
+                baseY: height + 0.65,
                 parentBox: group
             });
         }
@@ -527,13 +534,41 @@ export class Game3D {
         }
     }
 
-    createAK47Model() {
-        const gun = new THREE.Group();
-        const blueGunMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.35, metalness: 0.6 });
-        const darkMetalMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.85 });
-        const woodMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.6, metalness: 0.1 });
+    createFloatingWeaponMesh() {
+        const group = new THREE.Group();
 
-        const body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.9), blueGunMat);
+        // Clean Weapon 1 Sprite (perfect natural 1:1 aspect ratio, directly facing camera)
+        const spriteMat = new THREE.SpriteMaterial({
+            map: this.weapon1Texture,
+            transparent: true,
+            depthWrite: false
+        });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.scale.set(1.45, 1.52, 1);
+        group.add(sprite);
+
+        return group;
+    }
+
+    createAK47Model(isGolden = false) {
+        const gun = new THREE.Group();
+        const mainGunMat = new THREE.MeshStandardMaterial({
+            color: isGolden ? 0xf59e0b : 0x1d4ed8,
+            roughness: 0.35,
+            metalness: isGolden ? 0.75 : 0.6
+        });
+        const darkMetalMat = new THREE.MeshStandardMaterial({
+            color: isGolden ? 0x78350f : 0x1e293b,
+            roughness: 0.4,
+            metalness: 0.85
+        });
+        const woodMat = new THREE.MeshStandardMaterial({
+            color: isGolden ? 0xd97706 : 0xb45309,
+            roughness: 0.6,
+            metalness: 0.1
+        });
+
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.22, 0.9), mainGunMat);
         body.position.set(0, 0, 0);
         body.castShadow = true;
         gun.add(body);
@@ -569,7 +604,7 @@ export class Game3D {
         gun.add(stock);
 
         const glowMat = new THREE.MeshBasicMaterial({
-            color: 0x60a5fa,
+            color: isGolden ? 0xfbbf24 : 0x60a5fa,
             transparent: true,
             opacity: 0.35,
             side: THREE.BackSide
@@ -582,12 +617,13 @@ export class Game3D {
     }
 
     triggerWeaponPickup(weaponModel, worldPos) {
+        this.isWeaponUpgraded = true;
         this.bulletPower += 2;
-        this.fireInterval = Math.max(0.04, this.fireInterval * 0.7);
+        this.fireInterval = Math.max(0.12, this.fireInterval * 0.75);
         this.onPowerUp({ type: 'gun', power: this.bulletPower });
 
-        for (let i = 0; i < 20; i++) {
-            this.spawnSparkParticle(this.playerX, 1.2, this.playerZ, 0x60a5fa);
+        for (let i = 0; i < 30; i++) {
+            this.spawnSparkParticle(this.playerX, 1.2, this.playerZ, 0xf59e0b);
         }
     }
 
@@ -595,17 +631,23 @@ export class Game3D {
         const group = new THREE.Group();
         group.position.set(x, 0, z);
 
-        const width = 3.2;
+        const initialWidth = data.initialWidth || 3.2;
+        let currentWidth = initialWidth;
         const height = 3.6;
 
         const postMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, emissive: 0x0369a1, roughness: 0.2 });
         const pL = new THREE.Mesh(new THREE.BoxGeometry(0.14, height, 0.14), postMat);
-        pL.position.set(-width / 2 + 0.07, height / 2, 0);
+        pL.position.set(-currentWidth / 2 + 0.07, height / 2, 0);
         group.add(pL);
 
         const pR = new THREE.Mesh(new THREE.BoxGeometry(0.14, height, 0.14), postMat);
-        pR.position.set(width / 2 - 0.07, height / 2, 0);
+        pR.position.set(currentWidth / 2 - 0.07, height / 2, 0);
         group.add(pR);
+
+        const topBar = new THREE.Mesh(new THREE.BoxGeometry(1, 0.14, 0.14), postMat);
+        topBar.position.set(0, height, 0);
+        topBar.scale.set(currentWidth, 1, 1);
+        group.add(topBar);
 
         const energyMat = new THREE.MeshBasicMaterial({
             color: 0x38bdf8,
@@ -614,8 +656,9 @@ export class Game3D {
             side: THREE.DoubleSide,
             depthWrite: false
         });
-        const energyMesh = new THREE.Mesh(new THREE.PlaneGeometry(width - 0.2, height * 0.75), energyMat);
+        const energyMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, height * 0.75), energyMat);
         energyMesh.position.set(0, height * 0.45, 0);
+        energyMesh.scale.set(Math.max(0.1, currentWidth - 0.14), 1, 1);
         group.add(energyMesh);
 
         const sprite = this.createTextSprite(data.label, {
@@ -630,21 +673,69 @@ export class Game3D {
 
         this.rightLaneGroup.add(group);
 
-        return {
+        const isDynamic = !!data.isDynamic;
+
+        const gateObj = {
             group: group,
             localX: x,
             localZ: z,
-            width: width,
+            width: currentWidth,
+            maxWidth: data.maxWidth || 4.2,
             data: data,
+            isDynamic: isDynamic,
+            sprite: sprite,
+            pL: pL,
+            pR: pR,
+            topBar: topBar,
+            energyMesh: energyMesh,
+            energyMat: energyMat,
             isPassed: false,
+            onHitBullet: () => {
+                if (!isDynamic) return;
+
+                // Increase quantity by 1
+                gateObj.data.val = (gateObj.data.val || 1) + 1;
+                gateObj.data.label = `+${gateObj.data.val}`;
+
+                // Update text sprite
+                if (sprite.userData && sprite.userData.ctx) {
+                    this.renderTextOnCanvas(
+                        sprite.userData.ctx,
+                        sprite.userData.canvas.width,
+                        sprite.userData.canvas.height,
+                        gateObj.data.label,
+                        sprite.userData.options
+                    );
+                    sprite.userData.texture.needsUpdate = true;
+                }
+
+                // Expand gate width
+                if (gateObj.width < gateObj.maxWidth) {
+                    gateObj.width = Math.min(gateObj.maxWidth, gateObj.width + 0.08);
+                    pL.position.x = -gateObj.width / 2 + 0.07;
+                    pR.position.x = gateObj.width / 2 - 0.07;
+                    topBar.scale.x = gateObj.width;
+                    energyMesh.scale.x = Math.max(0.1, gateObj.width - 0.14);
+                }
+
+                // Hit flash effect
+                energyMat.opacity = 0.85;
+                setTimeout(() => { energyMat.opacity = 0.42; }, 50);
+
+                // Small scale bounce on text sprite
+                sprite.scale.set(2.7, 1.6, 1);
+                setTimeout(() => { sprite.scale.set(2.4, 1.4, 1); }, 50);
+            },
             onPass: () => {
                 energyMat.opacity = 0.95;
                 // Add runners to squad based on gate value!
-                this.applyGateRunnerIncrease(data);
-                this.onPowerUp({ type: 'gate', val: data.val });
+                this.applyGateRunnerIncrease(gateObj.data);
+                this.onPowerUp({ type: 'gate', val: gateObj.data.val });
                 setTimeout(() => { group.visible = false; }, 200);
             }
         };
+
+        return gateObj;
     }
 
     applyGateRunnerIncrease(gateData) {
@@ -763,7 +854,8 @@ export class Game3D {
     }
 
     setupEnemyMesh(enemyObj) {
-        if (!this.basePlayerModel) return;
+        const baseModel = this.baseEnemyModel || this.basePlayerModel;
+        if (!baseModel) return;
         try {
             if (enemyObj.proceduralGroup) {
                 enemyObj.group.remove(enemyObj.proceduralGroup);
@@ -773,7 +865,7 @@ export class Game3D {
                 enemyObj.group.remove(enemyObj.model);
             }
 
-            const m = SkeletonUtils.clone(this.basePlayerModel);
+            const m = SkeletonUtils.clone(baseModel);
             m.scale.set(0.72, 0.72, 0.72);
             m.rotation.y = Math.PI; // Face towards player
 
@@ -984,6 +1076,37 @@ export class Game3D {
             this.modelLoaded = true;
             this.addMemberToSquad(0, 0);
             this.onSquadCountChange(this.squad.length);
+        };
+
+        fetch(heroModelUrl)
+            .then(res => res.arrayBuffer())
+            .then(buffer => {
+                loader.parse(buffer, '', (gltf) => {
+                    setupModel(gltf);
+                }, () => {
+                    loader.load(heroModelUrl, setupModel, undefined, () => this.fallbackHero());
+                });
+            })
+            .catch(() => {
+                loader.load(heroModelUrl, setupModel, undefined, () => this.fallbackHero());
+            });
+    }
+
+    loadEnemyModel() {
+        const loader = new GLTFLoader();
+
+        const setupEnemy = (gltf) => {
+            this.baseEnemyModel = gltf.scene;
+            this.baseEnemyModel.scale.set(0.72, 0.72, 0.72);
+
+            this.baseEnemyModel.traverse((node) => {
+                if (node.isSkinnedMesh || node.isMesh) {
+                    node.frustumCulled = false;
+                    node.castShadow = true;
+                    node.receiveShadow = true;
+                }
+            });
+
             this.enemies.forEach(e => {
                 this.setupEnemyMesh(e);
             });
@@ -993,13 +1116,13 @@ export class Game3D {
             .then(res => res.arrayBuffer())
             .then(buffer => {
                 loader.parse(buffer, '', (gltf) => {
-                    setupModel(gltf);
+                    setupEnemy(gltf);
                 }, () => {
-                    loader.load(skinModelUrl, setupModel, undefined, () => this.fallbackHero());
+                    loader.load(skinModelUrl, setupEnemy, undefined, () => {});
                 });
             })
             .catch(() => {
-                loader.load(skinModelUrl, setupModel, undefined, () => this.fallbackHero());
+                loader.load(skinModelUrl, setupEnemy, undefined, () => {});
             });
     }
 
@@ -1045,12 +1168,6 @@ export class Game3D {
         // Stationary player squad stays at world Z = 0 + offsetZ
         memberModel.position.set(this.playerX + offsetX, 0, this.playerZ + offsetZ);
 
-        const gun = this.createAK47Model();
-        gun.scale.set(0.62, 0.62, 0.12);
-        gun.position.set(0.36, 1.16, 0.38);
-        gun.rotation.set(-0.04, 0, 0);
-        memberModel.add(gun);
-
         this.scene.add(memberModel);
 
         const bones = {};
@@ -1079,7 +1196,6 @@ export class Game3D {
 
         this.squad.push({
             model: memberModel,
-            gun: gun,
             bones: bones,
             mixer: mixer,
             actions: actions,
@@ -1291,18 +1407,50 @@ export class Game3D {
     // BULLETS & SHOOTING
     // -----------------------------------------------------------------
     spawnBullet(originX, originZ) {
-        const bulletGeo = new THREE.ConeGeometry(0.09, 0.6, 8);
-        const bulletMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-        const bulletMesh = new THREE.Mesh(bulletGeo, bulletMat);
-        bulletMesh.rotation.x = Math.PI / 2;
-        bulletMesh.position.set(originX, 0.84, originZ);
+        const bulletGroup = new THREE.Group();
+        const isUpgraded = this.isWeaponUpgraded;
 
-        this.scene.add(bulletMesh);
+        const outerColor = isUpgraded ? 0xfbbf24 : 0x00d2ff;
+        const trailColor = isUpgraded ? 0xf59e0b : 0x0284c7;
+
+        // 1. Sleek aerodynamic laser capsule (vibrant neon aura)
+        const outerGeo = new THREE.CapsuleGeometry(isUpgraded ? 0.095 : 0.085, 0.55, 6, 12);
+        const outerMat = new THREE.MeshBasicMaterial({
+            color: outerColor,
+            transparent: true,
+            opacity: 0.88
+        });
+        const outerMesh = new THREE.Mesh(outerGeo, outerMat);
+        outerMesh.rotation.x = Math.PI / 2;
+        bulletGroup.add(outerMesh);
+
+        // 2. White-hot energy core for high contrast and brightness
+        const coreGeo = new THREE.CapsuleGeometry(isUpgraded ? 0.052 : 0.045, 0.45, 6, 10);
+        const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const coreMesh = new THREE.Mesh(coreGeo, coreMat);
+        coreMesh.rotation.x = Math.PI / 2;
+        bulletGroup.add(coreMesh);
+
+        // 3. Sleek tapering laser speed trail
+        const trailGeo = new THREE.ConeGeometry(isUpgraded ? 0.085 : 0.075, 0.65, 8);
+        const trailMat = new THREE.MeshBasicMaterial({
+            color: trailColor,
+            transparent: true,
+            opacity: 0.55
+        });
+        const trailMesh = new THREE.Mesh(trailGeo, trailMat);
+        trailMesh.rotation.x = -Math.PI / 2;
+        trailMesh.position.z = -0.45;
+        bulletGroup.add(trailMesh);
+
+        bulletGroup.position.set(originX, 0.84, originZ);
+        this.scene.add(bulletGroup);
+
         this.bullets.push({
-            mesh: bulletMesh,
-            speed: 68,
+            mesh: bulletGroup,
+            speed: 34,
             damage: this.bulletPower,
-            life: 1.6
+            life: 2.8
         });
 
         this.onShoot();
@@ -1313,12 +1461,12 @@ export class Game3D {
             this.fireTimer += delta;
             if (this.fireTimer >= this.fireInterval) {
                 this.fireTimer = 0;
-                // Fire from all squad runners!
-                const squadCount = this.squad.length;
-                const maxStreams = Math.min(8, squadCount);
-                for (let i = 0; i < maxStreams; i++) {
+                // Fire from ALL squad runners - bullet count scales with squad count!
+                for (let i = 0; i < this.squad.length; i++) {
                     const runner = this.squad[i];
-                    this.spawnBullet(runner.model.position.x + 0.19, runner.model.position.z + 0.85);
+                    if (runner && runner.model) {
+                        this.spawnBullet(runner.model.position.x, runner.model.position.z + 0.6);
+                    }
                 }
             }
         }
@@ -1398,9 +1546,31 @@ export class Game3D {
                     break;
                 }
             }
+            // 3. Dynamic expandable gates (only initial +1 gate expands and increments on hit)
+            for (let k = 0; k < this.gates.length; k++) {
+                const g = this.gates[k];
+                if (g.isPassed || !g.isDynamic) continue;
+
+                const worldGateZ = g.localZ - this.distanceTravelled;
+                const dz = worldGateZ - b.mesh.position.z;
+                const dx = Math.abs(g.localX - b.mesh.position.x);
+
+                if (dz > -0.4 && dz < 0.9 && dx < g.width / 2 + 0.15) {
+                    if (g.onHitBullet) {
+                        g.onHitBullet();
+                    }
+                    this.spawnSparkBurst(b.mesh.position.x, 1.4, b.mesh.position.z);
+                    this.spawnFloatingDamageText(g.localX + (Math.random() - 0.5) * 0.4, 2.6, worldGateZ, '+1');
+
+                    this.scene.remove(b.mesh);
+                    this.bullets.splice(i, 1);
+                    bulletRemoved = true;
+                    break;
+                }
+            }
             if (bulletRemoved) continue;
 
-            // 3. Left lane +1 booster gates (moves only when Box 23 is destroyed)
+            // 4. Left lane +1 booster gates (moves only when Box 23 is destroyed)
             for (let k = 0; k < this.leftGates.length; k++) {
                 const lg = this.leftGates[k];
                 const worldGateZ = this.isBox23Destroyed ? (lg.localZ - this.leftGatesDistance) : lg.localZ;
@@ -1481,8 +1651,7 @@ export class Game3D {
         // Animate floating weapon bobbing
         this.floatingWeapons.forEach(fw => {
             if (fw.model && fw.parentBox && fw.parentBox.visible) {
-                fw.model.position.y = fw.baseY + Math.sin(this.animTime * 3.0) * 0.15;
-                fw.model.rotation.y = Math.PI / 2 + Math.sin(this.animTime * 2.0) * 0.2;
+                fw.model.position.y = fw.baseY + Math.sin(this.animTime * 3.0) * 0.12;
             }
         });
 

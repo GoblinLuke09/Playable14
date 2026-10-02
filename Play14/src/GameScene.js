@@ -5,6 +5,7 @@ import { Game3D } from './Game3D.js';
 import sfxClick from './assets/Sound/click.mp3';
 import sfxComplete from './assets/Sound/levelcomplete.mp3';
 import sfxGameover from './assets/Sound/gameover.mp3';
+import handImg from './assets/images/hand.webp';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -16,6 +17,7 @@ export class GameScene extends Phaser.Scene {
             this.load.audio('sfx_click', sfxClick);
             this.load.audio('sfx_complete', sfxComplete);
             this.load.audio('sfx_gameover', sfxGameover);
+            this.load.image('icon_hand', handImg);
         } catch (e) {
             console.warn('Audio preload fallback', e);
         }
@@ -37,15 +39,6 @@ export class GameScene extends Phaser.Scene {
         coinG.generateTexture('icon_coin', 32, 32);
 
 
-        // Generate tutorial finger texture
-        const fingerG = this.make.graphics({ x: 0, y: 0, add: false });
-        fingerG.fillStyle(0xffffff, 0.95);
-        fingerG.fillRoundedRect(10, 4, 12, 32, 6);
-        fingerG.fillCircle(16, 8, 6);
-        fingerG.fillRoundedRect(4, 20, 24, 22, 8);
-        fingerG.lineStyle(2, 0x333333, 0.8);
-        fingerG.strokeRoundedRect(4, 20, 24, 22, 8);
-        fingerG.generateTexture('icon_hand', 32, 46);
     }
 
     create() {
@@ -193,23 +186,70 @@ export class GameScene extends Phaser.Scene {
     }
 
     createTutorialHint() {
-        this.tutorialGroup = this.add.container(this.centerX, this.h * 0.76);
+        this.tutorialGroup = this.add.container(this.centerX, this.h * 0.72);
 
-        const hand = this.add.image(0, 0, 'icon_hand').setScale(1.3);
-        const text = this.add.text(0, 42, 'DRAG TO AIM & SHOOT!', {
-            fontFamily: '"Arial Black", Arial, sans-serif',
-            fontSize: '20px',
+        // Moving hand container (sweeps left-right horizontally)
+        const handContainer = this.add.container(-65, 0);
+
+        // Green pulse tap ripple
+        const ripple = this.add.graphics();
+        ripple.lineStyle(3, 0x84cc16, 0.9);
+        ripple.strokeCircle(-48, -62, 22);
+        ripple.fillStyle(0x84cc16, 0.45);
+        ripple.fillCircle(-48, -62, 14);
+
+        // Cartoon Glove Hand from hand.webp
+        const hand = this.add.image(0, 0, 'icon_hand').setScale(0.85);
+
+        handContainer.add([ripple, hand]);
+
+        // "Hold to Shoot" text matching reference image
+        const text = this.add.text(0, 88, 'Hold to Shoot', {
+            fontFamily: '"Arial Black", "Montserrat", "Impact", sans-serif',
+            fontSize: '38px',
             color: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 5
+            stroke: '#1e1b4b',
+            strokeThickness: 10,
+            shadow: {
+                offsetX: 0,
+                offsetY: 4,
+                color: '#0f172a',
+                blur: 8,
+                stroke: true,
+                fill: true
+            }
         }).setOrigin(0.5);
 
-        this.tutorialGroup.add([hand, text]);
+        this.tutorialGroup.add([handContainer, text]);
 
+        // Left-Right horizontal sweeping motion
         this.tweens.add({
-            targets: hand,
-            x: 50,
+            targets: handContainer,
+            x: 65,
+            duration: 850,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        // Ripple pulse
+        this.tweens.add({
+            targets: ripple,
+            scaleX: 1.4,
+            scaleY: 1.4,
+            alpha: 0.15,
             duration: 650,
+            yoyo: false,
+            repeat: -1,
+            ease: 'Cubic.easeOut'
+        });
+
+        // Text breathing pulse
+        this.tweens.add({
+            targets: text,
+            scaleX: 1.05,
+            scaleY: 1.05,
+            duration: 550,
             yoyo: true,
             repeat: -1,
             ease: 'Sine.easeInOut'
