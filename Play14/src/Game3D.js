@@ -23,11 +23,11 @@ export class Game3D {
         this.isGameActive = false;
         this.isLevelFinished = false;
 
-        // Player is stationary at Z = 0; starts on Main Runner lane (x = -1.0, visually right)
-        this.playerX = -1.0;
-        this.targetPlayerX = -1.0;
-        this.minPlayerX = -2.4; // Right lane boundary (visual right)
-        this.maxPlayerX = 2.8;  // Left lane boundary (visual left, to shoot Box 23)
+        // Player is stationary at Z = 0; starts on Main Runner lane (x = -0.7), can steer across both lanes
+        this.playerX = -0.7;
+        this.targetPlayerX = -0.7;
+        this.minPlayerX = -2.5; // Right lane outer boundary
+        this.maxPlayerX = 2.8;  // Left lane outer boundary (to shoot Box 23 and collect booster lane)
         this.playerZ = 0;       // Fixed Z position!
         
         // Right lane movement (moves normally from start)
@@ -38,6 +38,7 @@ export class Game3D {
         // Left lane gate blocking mechanic
         this.isBox23Destroyed = false; // Box 23 stays stationary blocking left gates
         this.leftGatesDistance = 0;    // Left gates only start moving when Box 23 is destroyed!
+        this.leftGatesSpeed = 26.0;    // High speed rushing booster stream (3.5x faster than worldSpeed)
 
         // Weapon assets & state
         const texLoader = new THREE.TextureLoader();
@@ -88,8 +89,9 @@ export class Game3D {
 
     initThree() {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x7da87d);
-        this.scene.fog = new THREE.FogExp2(0x567c5e, 0.009);
+        // Soft pastel peach-pink sky background matching the reference
+        this.scene.background = new THREE.Color(0xfecdd6);
+        this.scene.fog = new THREE.FogExp2(0xfecdd6, 0.005);
 
         // Fixed perspective camera behind stationary player looking down the bridge
         this.camera = new THREE.PerspectiveCamera(52, this.width / this.height, 0.1, 400);
@@ -102,7 +104,7 @@ export class Game3D {
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.15;
+        this.renderer.toneMappingExposure = 1.18;
 
         this.renderer.domElement.style.position = 'absolute';
         this.renderer.domElement.style.top = '0';
@@ -116,13 +118,13 @@ export class Game3D {
             this.container.appendChild(this.renderer.domElement);
         }
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.1);
         this.scene.add(ambientLight);
 
-        const hemiLight = new THREE.HemisphereLight(0xdff0d8, 0x3d5c38, 0.55);
+        const hemiLight = new THREE.HemisphereLight(0xfff0f3, 0xfce4ec, 0.9);
         this.scene.add(hemiLight);
 
-        this.dirLight = new THREE.DirectionalLight(0xfffaed, 1.4);
+        this.dirLight = new THREE.DirectionalLight(0xfffaee, 1.45);
         this.dirLight.position.set(-14, 28, -10);
         this.dirLight.castShadow = true;
         this.dirLight.shadow.mapSize.width = 2048;
@@ -153,125 +155,134 @@ export class Game3D {
         this.scene.add(this.stationaryGroup);
     }
 
+    createPurpleBrickTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 512;
+        const ctx = canvas.getContext('2d');
+
+        // Dark purple mortar background
+        ctx.fillStyle = '#4c3a7a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const rows = 20;
+        const cols = 5;
+        const brickH = canvas.height / rows;
+        const brickW = canvas.width / cols;
+
+        const brickPalette = ['#8c7bc9', '#7e6dbd', '#9b8bd6', '#7361b0', '#8574c4', '#6a58a3'];
+
+        for (let r = 0; r < rows; r++) {
+            const offset = (r % 2 === 0) ? 0 : brickW / 2;
+            for (let c = -1; c <= cols; c++) {
+                const x = c * brickW + offset;
+                const y = r * brickH;
+                const colorIdx = Math.abs((r * 4 + c * 7 + 13) % brickPalette.length);
+                
+                // Brick body
+                ctx.fillStyle = brickPalette[colorIdx];
+                ctx.fillRect(x + 2, y + 2, brickW - 4, brickH - 4);
+
+                // Top highlight
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
+                ctx.fillRect(x + 2, y + 2, brickW - 4, 3);
+
+                // Bottom shadow
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.22)';
+                ctx.fillRect(x + 2, y + brickH - 5, brickW - 4, 3);
+            }
+        }
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        return texture;
+    }
+
     // -----------------------------------------------------------------
-    // ENVIRONMENT: Mountain Valleys & Forest Slopes (STATIC)
+    // ENVIRONMENT: Clean Pastel Horizon (STATIC)
     // -----------------------------------------------------------------
     createMountainEnvironment() {
-        const valleyGeo = new THREE.PlaneGeometry(350, 600, 32, 48);
-        const valleyMat = new THREE.MeshLambertMaterial({ color: 0x2e5234, roughness: 0.95 });
-        
-        const pos = valleyGeo.attributes.position;
-        for (let i = 0; i < pos.count; i++) {
-            const vx = pos.getX(i);
-            const vz = pos.getY(i);
-            const distFromCenter = Math.abs(vx);
-            const elevation = Math.pow(distFromCenter / 25, 1.9) * 4.5 + Math.sin(vz * 0.08) * 8.0 - 18;
-            pos.setZ(i, elevation);
-        }
-        valleyGeo.computeVertexNormals();
-
-        const valleyMesh = new THREE.Mesh(valleyGeo, valleyMat);
-        valleyMesh.rotation.x = -Math.PI / 2;
-        valleyMesh.position.set(0, -6.5, 120);
-        valleyMesh.receiveShadow = true;
-        this.scene.add(valleyMesh); // STATIC in scene
-
-        // Procedural pine trees (STATIC in scene)
-        const treeTrunkGeo = new THREE.CylinderGeometry(0.3, 0.45, 2.5, 6);
-        const treeFoliageGeo = new THREE.ConeGeometry(2.4, 6.0, 7);
-        const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3220 });
-        const foliageMat1 = new THREE.MeshLambertMaterial({ color: 0x1e4620 });
-        const foliageMat2 = new THREE.MeshLambertMaterial({ color: 0x2d5e30 });
-
-        for (let i = 0; i < 90; i++) {
-            const side = (i % 2 === 0) ? 1 : -1;
-            const tx = side * (12 + Math.random() * 65);
-            const tz = -20 + Math.random() * 260;
-            const ty = Math.pow(Math.abs(tx) / 25, 1.9) * 4.5 - 18;
-
-            const treeGroup = new THREE.Group();
-            treeGroup.position.set(tx, ty, tz);
-
-            const trunk = new THREE.Mesh(treeTrunkGeo, trunkMat);
-            trunk.position.y = 1.25;
-            treeGroup.add(trunk);
-
-            const foliageMat = (i % 3 === 0) ? foliageMat1 : foliageMat2;
-            const foliage = new THREE.Mesh(treeFoliageGeo, foliageMat);
-            foliage.position.y = 4.6;
-            treeGroup.add(foliage);
-
-            const scale = 0.8 + Math.random() * 0.9;
-            treeGroup.scale.set(scale, scale, scale);
-            this.scene.add(treeGroup); // STATIC in scene
-        }
+        // Clean pastel horizon ground beneath the bridge track
+        const groundGeo = new THREE.PlaneGeometry(450, 700);
+        const groundMat = new THREE.MeshBasicMaterial({ color: 0xfecdd6 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.set(0, -18, 120);
+        this.scene.add(ground);
     }
 
     // -----------------------------------------------------------------
     // BRIDGE TRACKS (In World Container)
     // -----------------------------------------------------------------
     createBridgeTracks() {
-        const trackLength = this.totalTrackLength + 50;
+        const trackLength = this.totalTrackLength + 60;
         this.trackGroup = new THREE.Group();
 
-        const concreteRoadMat = new THREE.MeshStandardMaterial({
-            color: 0xadb3ba,
-            roughness: 0.85,
-            metalness: 0.05
+        // 1. Alternating Road Materials: Pure Crisp White vs Distinct Soft Lavender (High Contrast & Visible)
+        const whiteRoadMat = new THREE.MeshStandardMaterial({
+            color: 0xffffff,
+            roughness: 0.4
         });
-        const edgeLineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+        const lavenderRoadMat = new THREE.MeshStandardMaterial({
+            color: 0xd6cbe8, // Distinct soft pastel lavender with clear visible contrast against white
+            roughness: 0.4
+        });
+
+        // 2. Sidewalk Purple Brick & Solid Purple Curbs
+        const purpleBrickTex = this.createPurpleBrickTexture();
+        purpleBrickTex.repeat.set(1, Math.round(trackLength / 8));
+        const purpleBrickMat = new THREE.MeshStandardMaterial({
+            map: purpleBrickTex,
+            roughness: 0.55
+        });
+
+        const purpleCurbMat = new THREE.MeshStandardMaterial({
+            color: 0x8b5cf6, // Vibrant medium lilac purple matching ref
+            roughness: 0.4
+        });
         const bridgeUndersideMat = new THREE.MeshStandardMaterial({
-            color: 0x6e737a,
-            roughness: 0.9
+            color: 0xe2e8f0,
+            roughness: 0.75
         });
 
-        // 1. Initial Roadway
-        const initRoadGeo = new THREE.BoxGeometry(6.6, 0.6, 40);
-        const initRoad = new THREE.Mesh(initRoadGeo, concreteRoadMat);
-        initRoad.position.set(0.6, -0.3, 0);
-        initRoad.receiveShadow = true;
-        this.trackGroup.add(initRoad);
+        const segmentLength = 3.0; // Compact 3m alternating stripe blocks
 
-        [-2.4, 3.6].forEach(lx => {
-            const line = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 40), edgeLineMat);
-            line.rotation.x = -Math.PI / 2;
-            line.position.set(lx, 0.01, 0);
-            this.trackGroup.add(line);
+        // 1. Unified Main Roadway (-15 to trackLength) with Alternating White & Lavender Blocks
+        for (let z = -15; z < trackLength; z += segmentLength) {
+            const segLen = Math.min(segmentLength, trackLength - z);
+            const blockIndex = Math.floor((z + 15) / segmentLength);
+            const mat = (blockIndex % 2 === 0) ? whiteRoadMat : lavenderRoadMat;
+            
+            // Main running lane (width ~ 4.4m, x = -0.7)
+            const mainRoadSlab = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.6, segLen), mat);
+            mainRoadSlab.position.set(-0.7, -0.3, z + segLen / 2);
+            mainRoadSlab.receiveShadow = true;
+            this.trackGroup.add(mainRoadSlab);
+        }
+
+        // 2. Purple Brick Sidewalk on the Left Side (from -15 to trackLength, width 1.7m at x = 2.45)
+        const sidewalkSlab = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.61, trackLength + 15), purpleBrickMat);
+        sidewalkSlab.position.set(2.45, -0.295, (trackLength - 15) / 2);
+        sidewalkSlab.receiveShadow = true;
+        this.trackGroup.add(sidewalkSlab);
+
+        // 3. Purple Curbs: Far Left (x = 3.42), Sidewalk Divider (x = 1.55), Far Right (x = -2.95)
+        const curbWidth = 0.22;
+        const totalLen = trackLength + 15;
+        const midZ = (trackLength - 15) / 2;
+
+        [3.42, 1.55, -2.95].forEach(cx => {
+            const curb = new THREE.Mesh(new THREE.BoxGeometry(curbWidth, 0.64, totalLen), purpleCurbMat);
+            curb.position.set(cx, -0.28, midZ);
+            curb.receiveShadow = true;
+            this.trackGroup.add(curb);
         });
 
-        // 2. Split Booster Track (VISUAL LEFT -> x = 2.2, width = 2.4)
-        const splitLen = trackLength - 20;
-        const boosterRoadGeo = new THREE.BoxGeometry(2.4, 0.6, splitLen);
-        const boosterRoad = new THREE.Mesh(boosterRoadGeo, concreteRoadMat);
-        boosterRoad.position.set(2.2, -0.3, 20 + splitLen / 2);
-        boosterRoad.receiveShadow = true;
-        this.trackGroup.add(boosterRoad);
-
-        [1.1, 3.3].forEach(lx => {
-            const line = new THREE.Mesh(new THREE.PlaneGeometry(0.08, splitLen), edgeLineMat);
-            line.rotation.x = -Math.PI / 2;
-            line.position.set(lx, 0.01, 20 + splitLen / 2);
-            this.trackGroup.add(line);
-        });
-
-        // 3. Split Main Runner Track (VISUAL RIGHT -> x = -1.0, width = 3.4)
-        const mainRoadGeo = new THREE.BoxGeometry(3.4, 0.6, splitLen);
-        const mainRoad = new THREE.Mesh(mainRoadGeo, concreteRoadMat);
-        mainRoad.position.set(-1.0, -0.3, 20 + splitLen / 2);
-        mainRoad.receiveShadow = true;
-        this.trackGroup.add(mainRoad);
-
-        [-2.6, 0.6].forEach(rx => {
-            const line = new THREE.Mesh(new THREE.PlaneGeometry(0.08, splitLen), edgeLineMat);
-            line.rotation.x = -Math.PI / 2;
-            line.position.set(rx, 0.01, 20 + splitLen / 2);
-            this.trackGroup.add(line);
-        });
-
-        // Underside pillars
+        // 4. Underside Support Pillars
         const pillarGeo = new THREE.CylinderGeometry(0.7, 0.9, 20, 12);
         for (let z = -10; z < trackLength; z += 28) {
-            [-1.0, 2.2].forEach(px => {
+            [-0.7, 2.45].forEach(px => {
                 const pillar = new THREE.Mesh(pillarGeo, bridgeUndersideMat);
                 pillar.position.set(px, -10.3, z);
                 pillar.castShadow = true;
@@ -285,44 +296,98 @@ export class Game3D {
     }
 
     createBridgeRailings(trackLength) {
-        const postGeo = new THREE.BoxGeometry(0.18, 1.1, 0.18);
-        const railMat = new THREE.MeshStandardMaterial({ color: 0x8a9098, roughness: 0.7 });
-        const barMat = new THREE.MeshStandardMaterial({ color: 0x5c6168, roughness: 0.6 });
+        // Outer Stepped Golden Picket Fences anchored precisely on the left and right purple curbs
+        this.buildRailingRun(-2.95, -15, trackLength);
+        this.buildRailingRun(3.42, -15, trackLength);
 
-        this.buildRailingRun(-2.75, -15, trackLength, railMat, barMat, postGeo);
-        this.buildRailingRun(3.65, -15, trackLength, railMat, barMat, postGeo);
-        this.buildRailingRun(0.75, 20, trackLength, railMat, barMat, postGeo);
-        this.buildRailingRun(1.05, 20, trackLength, railMat, barMat, postGeo);
-
-        // Entrance barrier on Booster split lane (Visual Left -> x = 2.2)
-        const barrierGeo = new THREE.BoxGeometry(1.3, 0.9, 0.1);
-        const barrierMat = new THREE.MeshStandardMaterial({ color: 0x555a60 });
-        this.leftBarrier = new THREE.Mesh(barrierGeo, barrierMat);
-        this.leftBarrier.position.set(2.2, 0.45, 21.5);
-        this.trackGroup.add(this.leftBarrier);
+        // Middle Golden Picket Fence anchored on the middle purple divider curb
+        this.buildRailingRun(1.55, 20, trackLength);
     }
 
-    buildRailingRun(rx, startZ, endZ, railMat, barMat, postGeo) {
-        const len = endZ - startZ;
-        const topRail = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.12, len), railMat);
-        topRail.position.set(rx, 0.95, startZ + len / 2);
-        this.trackGroup.add(topRail);
+    buildRailingRun(rx, startZ, endZ) {
+        // Uniform rich golden amber wood material matching reference image
+        const goldWoodMat = new THREE.MeshStandardMaterial({ 
+            color: 0xdf8800, // Rich warm golden amber wood tone
+            roughness: 0.32, 
+            metalness: 0.05 
+        });
+        const silverStudMat = new THREE.MeshStandardMaterial({ 
+            color: 0xe2e8f0, 
+            roughness: 0.2, 
+            metalness: 0.85 
+        });
 
-        const midRail = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, len), railMat);
-        midRail.position.set(rx, 0.45, startZ + len / 2);
-        this.trackGroup.add(midRail);
+        const panelLength = 1.9;
+        const gapLength = 0.5;
+        const stride = panelLength + gapLength; // 2.4m
 
-        for (let z = startZ; z <= endZ; z += 3.2) {
-            const post = new THREE.Mesh(postGeo, railMat);
-            post.position.set(rx, 0.55, z);
-            post.castShadow = true;
-            this.trackGroup.add(post);
+        // Pointed post geometries
+        const postH = 0.95;
+        const postTipH = 0.15;
+        const postGeo = new THREE.BoxGeometry(0.07, postH, 0.12);
+        const postTipGeo = new THREE.ConeGeometry(0.085, postTipH, 4);
+        const railGeo = new THREE.BoxGeometry(0.06, 0.07, panelLength);
+        const studGeo = new THREE.BoxGeometry(0.08, 0.06, 0.06);
 
-            for (let subZ = z + 0.6; subZ < z + 3.0 && subZ < endZ; subZ += 0.6) {
-                const bal = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.85, 6), barMat);
-                bal.position.set(rx, 0.5, subZ);
-                this.trackGroup.add(bal);
-            }
+        const groundY = 0.04; // Sits firmly on purple curb top surface
+
+        for (let pz = startZ; pz + panelLength <= endZ; pz += stride) {
+            const centerZ = pz + panelLength / 2;
+
+            // 1. Two Pointed Wooden End Posts for each panel (Anchored firmly on curb)
+            [pz, pz + panelLength].forEach(postZ => {
+                const post = new THREE.Mesh(postGeo, goldWoodMat);
+                post.position.set(rx, groundY + postH / 2, postZ);
+                post.castShadow = true;
+                this.trackGroup.add(post);
+
+                const postTip = new THREE.Mesh(postTipGeo, goldWoodMat);
+                postTip.rotation.y = Math.PI / 4;
+                postTip.position.set(rx, groundY + postH + postTipH / 2, postZ);
+                postTip.castShadow = true;
+                this.trackGroup.add(postTip);
+            });
+
+            // 2. Top & Bottom Connecting Wooden Rails
+            const topRail = new THREE.Mesh(railGeo, goldWoodMat);
+            topRail.position.set(rx, groundY + 0.64, centerZ);
+            this.trackGroup.add(topRail);
+
+            const midRail = new THREE.Mesh(railGeo, goldWoodMat);
+            midRail.position.set(rx, groundY + 0.20, centerZ);
+            this.trackGroup.add(midRail);
+
+            // 3. Silver Diamond Stud Bolts on the rails
+            const studTop = new THREE.Mesh(studGeo, silverStudMat);
+            studTop.rotation.x = Math.PI / 4;
+            studTop.position.set(rx, groundY + 0.64, centerZ);
+            this.trackGroup.add(studTop);
+
+            const studBottom = new THREE.Mesh(studGeo, silverStudMat);
+            studBottom.rotation.x = Math.PI / 4;
+            studBottom.position.set(rx, groundY + 0.20, centerZ);
+            this.trackGroup.add(studBottom);
+
+            // 4. Vertical Pickets with Pointed Tips (Anchored firmly on curb)
+            const heights = [0.86, 0.74, 0.62, 0.74];
+            const picketOffsets = [0.38, 0.76, 1.14, 1.52];
+
+            picketOffsets.forEach((off, idx) => {
+                const h = heights[idx % heights.length];
+                const tipH = 0.12;
+                const pGeo = new THREE.BoxGeometry(0.045, h, 0.12);
+                const picket = new THREE.Mesh(pGeo, goldWoodMat);
+                picket.position.set(rx, groundY + h / 2, pz + off);
+                picket.castShadow = true;
+                this.trackGroup.add(picket);
+
+                const tipGeo = new THREE.ConeGeometry(0.07, tipH, 4);
+                const tip = new THREE.Mesh(tipGeo, goldWoodMat);
+                tip.rotation.y = Math.PI / 4;
+                tip.position.set(rx, groundY + h + tipH / 2, pz + off);
+                tip.castShadow = true;
+                this.trackGroup.add(tip);
+            });
         }
     }
 
@@ -330,13 +395,13 @@ export class Game3D {
     // COURSE LAYOUT
     // -----------------------------------------------------------------
     createCourseLayout() {
-        // 1. VISUAL LEFT LANE (x = 2.2): Box 23 with AK-47 is STATIONARY at z = 25.5
+        // 1. VISUAL LEFT LANE (x = 2.45): Box 23 with AK-47 is STATIONARY at z = 25.5
         const box23 = this.createNumberCrateStack({
-            x: 2.2,
+            x: 2.45,
             z: 25.5,
-            width: 1.8,
+            width: 1.4,
             height: 1.8,
-            depth: 1.5,
+            depth: 1.4,
             hp: 23,
             label: '23',
             hasWeapon: true,
@@ -344,34 +409,34 @@ export class Game3D {
         });
         this.boxObstacles.push(box23);
 
-        // Long row of +1 gates along left lane (moves ONLY after Box 23 is destroyed)
-        for (let z = 31; z <= 155; z += 3.2) {
-            const gate = this.createLeftBoosterGate(2.2, z, '+1');
+        // Dense continuous stream of +1 gates along left lane (moves ONLY after Box 23 is destroyed)
+        for (let z = 28; z <= 240; z += 1.8) {
+            const gate = this.createLeftBoosterGate(2.45, z, '+1');
             this.leftGates.push(gate);
         }
 
-        // 2. VISUAL RIGHT LANE (x = -1.0): Gate "+1" (widens and increments on bullet hits), Box "89", Blue Monster, Box "192", Gate "+10", Box "785" with Gun
-        const gate1 = this.createTranslucentGate(-1.0, 32, { type: 'add', val: 1, label: '+1', isDynamic: true, initialWidth: 3.2, maxWidth: 4.2 });
+        // 2. VISUAL RIGHT LANE (x = -0.7): Gate "+1" (widens and increments on bullet hits), Box "89", Blue Monster, Box "192", Gate "+10", Box "785" with Gun
+        const gate1 = this.createTranslucentGate(-0.7, 32, { type: 'add', val: 1, label: '+1', isDynamic: true, initialWidth: 2.8, maxWidth: 3.8 });
         this.gates.push(gate1);
 
         const box89 = this.createNumberCrateStack({
-            x: -1.0,
+            x: -0.7,
             z: 60,
-            width: 1.9,
-            height: 1.9,
+            width: 1.8,
+            height: 1.8,
             depth: 1.5,
             hp: 89,
             label: '89'
         });
         this.boxObstacles.push(box89);
 
-        this.spawnEnemyGuard(-1.0, 74, { hp: 120, maxHp: 120 });
+        this.spawnEnemyGuard(-0.7, 74, { hp: 120, maxHp: 120 });
 
         const box192 = this.createNumberCrateStack({
-            x: -1.0,
+            x: -0.7,
             z: 94,
-            width: 1.9,
-            height: 1.9,
+            width: 1.8,
+            height: 1.8,
             depth: 1.5,
             hp: 192,
             label: '192'
@@ -379,15 +444,15 @@ export class Game3D {
         this.boxObstacles.push(box192);
 
         // Gate +10 ahead (fixed value)
-        const gate10 = this.createTranslucentGate(-1.0, 116, { type: 'add', val: 10, label: '+10', isDynamic: false });
+        const gate10 = this.createTranslucentGate(-0.7, 116, { type: 'add', val: 10, label: '+10', isDynamic: false, initialWidth: 3.0 });
         this.gates.push(gate10);
 
         const box785 = this.createNumberCrateStack({
-            x: -1.0,
+            x: -0.7,
             z: 138,
-            width: 2.0,
-            height: 2.0,
-            depth: 1.6,
+            width: 1.9,
+            height: 1.9,
+            depth: 1.5,
             hp: 785,
             label: '785',
             hasWeapon: true
@@ -757,7 +822,7 @@ export class Game3D {
         const group = new THREE.Group();
         group.position.set(x, 0, z);
 
-        const width = 2.1;
+        const width = 1.4;
         const height = 2.6;
 
         const frameMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
@@ -1660,10 +1725,22 @@ export class Game3D {
             this.distanceTravelled += this.worldSpeed * delta;
             this.rightLaneGroup.position.z = -this.distanceTravelled;
 
-            // Left lane +1 gates move ONLY after Box 23 is destroyed!
+            // Left lane +1 gates move with high rushing speed and infinite conveyor wrap-around
             if (this.isBox23Destroyed) {
-                this.leftGatesDistance += this.worldSpeed * delta;
+                this.leftGatesDistance += this.leftGatesSpeed * delta;
                 this.leftGatesGroup.position.z = -this.leftGatesDistance;
+
+                // Infinite conveyor wrapping loop
+                const totalSpan = this.leftGates.length * 1.8;
+                this.leftGates.forEach(lg => {
+                    const worldZ = lg.localZ - this.leftGatesDistance;
+                    if (worldZ < -12) {
+                        lg.localZ += totalSpan;
+                        lg.group.position.z = lg.localZ;
+                        lg.isTriggered = false;
+                        lg.group.visible = true;
+                    }
+                });
             } else {
                 this.leftGatesGroup.position.z = 0;
             }
@@ -1805,12 +1882,30 @@ export class Game3D {
             targetActionName = 'run';
         }
 
-        this.squad.forEach((member) => {
-            const targetX = this.playerX + member.targetOffsetX;
-            const targetZ = this.playerZ + member.targetOffsetZ;
+        // Exact bridge boundaries: keep all characters firmly within the bridge pavement
+        const bridgeMinX = -2.70; // Inside right outer fence/curb
+        const bridgeMaxX = 3.20;  // Inside left outer fence/curb
 
-            member.model.position.x += (targetX - member.model.position.x) * 14 * delta;
-            member.model.position.z += (targetZ - member.model.position.z) * 14 * delta;
+        this.squad.forEach((member) => {
+            let desiredX = this.playerX + member.targetOffsetX;
+            let desiredZ = this.playerZ + member.targetOffsetZ;
+
+            // Auto-squeeze / compress squad inward when reaching bridge outer borders
+            if (desiredX < bridgeMinX) {
+                const overflow = bridgeMinX - desiredX;
+                desiredX = bridgeMinX + (Math.random() * 0.05);
+                desiredZ -= overflow * 0.75; // Squeeze backward along road
+            } else if (desiredX > bridgeMaxX) {
+                const overflow = desiredX - bridgeMaxX;
+                desiredX = bridgeMaxX - (Math.random() * 0.05);
+                desiredZ -= overflow * 0.75; // Squeeze backward along road
+            }
+
+            member.model.position.x += (desiredX - member.model.position.x) * 14 * delta;
+            member.model.position.z += (desiredZ - member.model.position.z) * 14 * delta;
+
+            // Hard clamp: guarantee no character ever floats in the air outside the road
+            member.model.position.x = THREE.MathUtils.clamp(member.model.position.x, bridgeMinX, bridgeMaxX);
 
             member.model.rotation.z = -turnTilt;
             member.model.rotation.y = turnTilt * 0.7;
