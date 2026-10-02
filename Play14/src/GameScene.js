@@ -1,10 +1,11 @@
 import Phaser from 'phaser';
 import { Game3D } from './Game3D.js';
 
-// Import sound assets for Vite bundling & single-file inlining
+// Import sound & image assets for Vite bundling & single-file inlining
 import sfxClick from './assets/Sound/click.mp3';
 import sfxComplete from './assets/Sound/levelcomplete.mp3';
 import sfxGameover from './assets/Sound/gameover.mp3';
+import handImgUrl from './assets/Image/hand.webp';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -37,15 +38,8 @@ export class GameScene extends Phaser.Scene {
         coinG.generateTexture('icon_coin', 32, 32);
 
 
-        // Generate tutorial finger texture
-        const fingerG = this.make.graphics({ x: 0, y: 0, add: false });
-        fingerG.fillStyle(0xffffff, 0.95);
-        fingerG.fillRoundedRect(10, 4, 12, 32, 6);
-        fingerG.fillCircle(16, 8, 6);
-        fingerG.fillRoundedRect(4, 20, 24, 22, 8);
-        fingerG.lineStyle(2, 0x333333, 0.8);
-        fingerG.strokeRoundedRect(4, 20, 24, 22, 8);
-        fingerG.generateTexture('icon_hand', 32, 46);
+        // Load cartoon hand icon
+        this.load.image('icon_hand', handImgUrl);
     }
 
     create() {
@@ -190,23 +184,42 @@ export class GameScene extends Phaser.Scene {
     }
 
     createTutorialHint() {
-        this.tutorialGroup = this.add.container(this.centerX, this.h * 0.76);
+        this.tutorialGroup = this.add.container(this.centerX, this.h * 0.74);
 
-        const hand = this.add.image(0, 0, 'icon_hand').setScale(1.3);
-        const text = this.add.text(0, 42, 'DRAG TO AIM & SHOOT!', {
-            fontFamily: '"Arial Black", Arial, sans-serif',
-            fontSize: '20px',
+        const hand = this.add.image(-55, 0, 'icon_hand').setScale(0.85);
+        const text = this.add.text(0, 72, 'DRAG TO AIM & SHOOT!', {
+            fontFamily: '"Arial Black", "Montserrat", Impact, sans-serif',
+            fontSize: '24px',
             color: '#ffffff',
             stroke: '#000000',
-            strokeThickness: 5
+            strokeThickness: 6,
+            shadow: {
+                offsetX: 0,
+                offsetY: 3,
+                color: '#000000',
+                blur: 4,
+                stroke: true,
+                fill: true
+            }
         }).setOrigin(0.5);
 
         this.tutorialGroup.add([hand, text]);
 
+        // Smooth left-to-right dragging motion
         this.tweens.add({
             targets: hand,
-            x: 50,
-            duration: 650,
+            x: 55,
+            duration: 750,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        // Subtle text pulse
+        this.tweens.add({
+            targets: text,
+            scale: 1.05,
+            duration: 600,
             yoyo: true,
             repeat: -1,
             ease: 'Sine.easeInOut'

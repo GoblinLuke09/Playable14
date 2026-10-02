@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import skinModelUrl from './assets/Model/Skin_BF14.glb';
-import bossModelUrl from './assets/Model/Athlete_05.glb';
+import heroModelUrl from './assets/Model/Hero_02.glb';
+import athleteModelUrl from './assets/Model/Athlete_05.glb';
+import weapon1Url from './assets/Image/Weapon_1.webp';
 
 export class Game3D {
     constructor(container, options = {}) {
@@ -38,10 +39,15 @@ export class Game3D {
         this.leftGatesDistance = 0;    // Left gates only start moving when Box 3 is destroyed!
         this.leftGatesSpeed = 13.5;    // High speed for fast booster gate rush!
 
+        // Weapon assets
+        const texLoader = new THREE.TextureLoader();
+        this.weapon1Texture = texLoader.load(weapon1Url);
+
         // Shooting stats
         this.fireTimer = 0;
         this.fireInterval = 0.28; // Slower initial fire rate before getting the gun
         this.bulletPower = 1;
+        this.bulletColor = 0x38bdf8; // Starts as cyan/blue, turns to golden yellow (0xfacc15) after breaking yellow box
         this.bullets = [];
 
         // Squad members (starts with 1 player, grows with gates)
@@ -393,17 +399,15 @@ export class Game3D {
         numberMesh.rotation.set(0.42, Math.PI, 0); // Face camera correctly without mirroring!
         group.add(numberMesh);
 
-        // Floating Gun on top of Box 3 (AK-47)
+        // Floating Weapon on top of Box (Weapon_1.webp sprite)
         let weaponModel = null;
         if (config.hasWeapon) {
-            weaponModel = this.createAK47Model();
-            weaponModel.position.set(0, height + 0.55, 0);
-            weaponModel.scale.set(1.15, 1.15, 1.15);
-            weaponModel.rotation.set(0.15, Math.PI / 2, 0); // Side profile with slight tilt for camera
+            weaponModel = this.createFloatingWeaponMesh();
+            weaponModel.position.set(0, height + 0.65, 0);
             group.add(weaponModel);
             this.floatingWeapons.push({
                 model: weaponModel,
-                baseY: height + 0.55,
+                baseY: height + 0.65,
                 parentBox: group
             });
         }
@@ -455,6 +459,7 @@ export class Game3D {
                 const isStationary = !!config.isStationary;
                 const worldPos = isStationary ? group.position.clone() : new THREE.Vector3(group.position.x, group.position.y, group.position.z - this.distanceTravelled);
                 this.spawnDebris(worldPos, isStationary);
+                this.bulletColor = 0xfacc15; // Change bullet color to golden yellow!
                 if (weaponModel) {
                     this.triggerWeaponPickup(weaponModel, worldPos);
                 }
@@ -485,6 +490,22 @@ export class Game3D {
                 life: 1.5
             });
         }
+    }
+
+    createFloatingWeaponMesh() {
+        const group = new THREE.Group();
+
+        // 2D Sprite for Weapon_1.webp facing camera naturally
+        const spriteMat = new THREE.SpriteMaterial({
+            map: this.weapon1Texture,
+            transparent: true,
+            depthWrite: false
+        });
+        const sprite = new THREE.Sprite(spriteMat);
+        sprite.scale.set(1.5, 1.5, 1);
+        group.add(sprite);
+
+        return group;
     }
 
     createAK47Model() {
@@ -597,6 +618,7 @@ export class Game3D {
     triggerWeaponPickup(weaponModel, worldPos) {
         this.bulletPower += 2;
         this.fireInterval = 0.11; // Fast rapid fire after unlocking the gun!
+        this.bulletColor = 0xfacc15; // Golden yellow bullet color!
         this.onPowerUp({ type: 'gun', power: this.bulletPower });
 
         for (let i = 0; i < 25; i++) {
@@ -703,7 +725,7 @@ export class Game3D {
             isDestroyed: false
         };
 
-        if (this.basePlayerModel) {
+        if (this.baseBossModel) {
             this.setupRedMinionMesh(minionObj);
         } else {
             this.setupProceduralRedMinionMesh(minionObj);
@@ -714,7 +736,7 @@ export class Game3D {
     }
 
     setupRedMinionMesh(minionObj) {
-        if (!this.basePlayerModel) return;
+        if (!this.baseBossModel) return;
         try {
             if (minionObj.proceduralGroup) {
                 minionObj.group.remove(minionObj.proceduralGroup);
@@ -724,12 +746,11 @@ export class Game3D {
                 minionObj.group.remove(minionObj.model);
             }
 
-            const m = SkeletonUtils.clone(this.basePlayerModel);
+            const m = SkeletonUtils.clone(this.baseBossModel);
             const s = minionObj.scale || 0.65;
             m.scale.set(s, s, s);
             m.rotation.y = 0; // Group handles facing direction (Math.PI)
 
-            // Bright red minion material matching the image
             const redMat = new THREE.MeshStandardMaterial({
                 color: 0xdc2626,
                 roughness: 0.35,
@@ -745,10 +766,16 @@ export class Game3D {
                 }
             });
 
-            if (this.clips && this.clips.run) {
-                const mixer = new THREE.AnimationMixer(m);
-                const action = mixer.clipAction(this.clips.run);
+            const mixer = new THREE.AnimationMixer(m);
+            if (this.bossAnimations && this.bossAnimations.length > 0) {
+                const action = mixer.clipAction(this.bossAnimations[0]);
                 action.timeScale = 0.85 + Math.random() * 0.35; // Asynchronous leg movements
+                action.play();
+                mixer.setTime(Math.random() * 1.2);
+                minionObj.mixer = mixer;
+            } else if (this.clips && this.clips.run) {
+                const action = mixer.clipAction(this.clips.run);
+                action.timeScale = 0.85 + Math.random() * 0.35;
                 action.play();
                 mixer.setTime(Math.random() * 1.2);
                 minionObj.mixer = mixer;
@@ -860,19 +887,11 @@ export class Game3D {
             }
 
             const m = SkeletonUtils.clone(this.baseBossModel);
-            m.scale.set(3.0, 3.0, 3.0);
+            m.scale.set(2.8, 2.8, 2.8);
             m.rotation.y = Math.PI; // Face towards player squad
-
-            // Red Boss material matching the giant boss in the image
-            const bossRedMat = new THREE.MeshStandardMaterial({
-                color: 0x991b1b,
-                roughness: 0.35,
-                metalness: 0.25
-            });
 
             m.traverse(node => {
                 if (node.isMesh || node.isSkinnedMesh) {
-                    node.material = bossRedMat;
                     node.frustumCulled = false;
                     node.castShadow = true;
                     node.receiveShadow = true;
@@ -883,11 +902,12 @@ export class Game3D {
             if (this.bossAnimations && this.bossAnimations.length > 0) {
                 const action = mixer.clipAction(this.bossAnimations[0]);
                 action.play();
+                this.finalBoss.mixer = mixer;
             } else if (this.clips && this.clips.run) {
                 const action = mixer.clipAction(this.clips.run);
                 action.play();
+                this.finalBoss.mixer = mixer;
             }
-            this.finalBoss.mixer = mixer;
 
             this.finalBoss.group.add(m);
             this.finalBoss.model = m;
@@ -918,10 +938,14 @@ export class Game3D {
 
     loadBossModel() {
         const loader = new GLTFLoader();
-        loader.load(bossModelUrl, (gltf) => {
+        loader.load(athleteModelUrl, (gltf) => {
             this.baseBossModel = gltf.scene;
             this.bossAnimations = gltf.animations || [];
             this.setupBossMesh();
+            // Apply Athlete_05 model to all Red Minions / Enemies
+            this.redMinions.forEach(m => {
+                this.setupRedMinionMesh(m);
+            });
         }, undefined, (err) => {
             console.warn('Fallback loading boss model', err);
             this.setupProceduralBossMesh();
@@ -929,7 +953,7 @@ export class Game3D {
     }
 
     // -----------------------------------------------------------------
-    // 3D MODEL LOADING: Skin_BF14 & Hero_02
+    // 3D MODEL LOADING: Hero_02 & Athlete_05
     // -----------------------------------------------------------------
     setupInitialPlayer() {
         // Create initial player runner on frame 1 so player is immediately visible with a gun
@@ -941,7 +965,7 @@ export class Game3D {
 
         const setupModel = (gltf) => {
             this.basePlayerModel = gltf.scene;
-            this.basePlayerModel.scale.set(0.50, 0.50, 0.50); // Scaled down to ~70% size
+            this.basePlayerModel.scale.set(0.65, 0.65, 0.65);
 
             this.basePlayerModel.traverse((node) => {
                 if (node.isSkinnedMesh || node.isMesh) {
@@ -953,7 +977,7 @@ export class Game3D {
 
             this.modelLoaded = true;
 
-            // Upgrade squad with Skin_BF14 model
+            // Upgrade squad with Hero_02 model
             if (this.squad.length > 0) {
                 this.squad.forEach(member => {
                     if (member && member.model) {
@@ -964,24 +988,19 @@ export class Game3D {
             }
             this.addMemberToSquad(0, 0);
             this.onSquadCountChange(this.squad.length);
-
-            // Apply Skin_BF14 (in bright red) to all Red Minions
-            this.redMinions.forEach(m => {
-                this.setupRedMinionMesh(m);
-            });
         };
 
-        fetch(skinModelUrl)
+        fetch(heroModelUrl)
             .then(res => res.arrayBuffer())
             .then(buffer => {
                 loader.parse(buffer, '', (gltf) => {
                     setupModel(gltf);
                 }, () => {
-                    loader.load(skinModelUrl, setupModel, undefined, () => this.fallbackHero());
+                    loader.load(heroModelUrl, setupModel, undefined, () => this.fallbackHero());
                 });
             })
             .catch(() => {
-                loader.load(skinModelUrl, setupModel, undefined, () => this.fallbackHero());
+                loader.load(heroModelUrl, setupModel, undefined, () => this.fallbackHero());
             });
     }
 
@@ -1029,12 +1048,6 @@ export class Game3D {
         // Stationary player squad stays at world Z = 0 + offsetZ
         memberModel.position.set(this.playerX + offsetX, 0, this.playerZ + offsetZ);
 
-        const gun = this.createAK47Model();
-        gun.scale.set(0.34, 0.34, 0.34); // Proportionate to 70% runner scale
-        gun.position.set(0.30, 0.76, 0.50);
-        gun.rotation.set(-0.06, 0, 0);
-        memberModel.add(gun);
-
         this.scene.add(memberModel);
 
         const bones = {};
@@ -1063,7 +1076,6 @@ export class Game3D {
 
         this.squad.push({
             model: memberModel,
-            gun: gun,
             bones: bones,
             mixer: mixer,
             actions: actions,
@@ -1271,14 +1283,57 @@ export class Game3D {
         });
     }
 
-    // -----------------------------------------------------------------
-    // BULLETS & SHOOTING
-    // -----------------------------------------------------------------
+    createRocketBulletMesh(isGolden = false) {
+        const group = new THREE.Group();
+
+        const tipColor = isGolden ? 0xf59e0b : 0x2563eb;    // Blue nose cone (Gold when upgraded)
+        const bodyColor = isGolden ? 0xfacc15 : 0xeab308;   // Yellow fuselage
+        const bandColor = isGolden ? 0xd97706 : 0x1d4ed8;   // Rear band
+        const finColor = isGolden ? 0xf59e0b : 0xf97316;    // Orange stabilizer fins
+
+        const tipMat = new THREE.MeshBasicMaterial({ color: tipColor });
+        const bodyMat = new THREE.MeshBasicMaterial({ color: bodyColor });
+        const bandMat = new THREE.MeshBasicMaterial({ color: bandColor });
+        const finMat = new THREE.MeshBasicMaterial({ color: finColor });
+
+        // Pointed Nose Cone (facing forward +Z)
+        const nose = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.35, 8), tipMat);
+        nose.rotation.x = Math.PI / 2;
+        nose.position.set(0, 0, 0.35);
+        group.add(nose);
+
+        // Yellow Middle Fuselage
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.38, 8), bodyMat);
+        body.rotation.x = Math.PI / 2;
+        body.position.set(0, 0, 0.0);
+        group.add(body);
+
+        // Rear Nozzle Band
+        const rear = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.08, 0.24, 8), bandMat);
+        rear.rotation.x = Math.PI / 2;
+        rear.position.set(0, 0, -0.28);
+        group.add(rear);
+
+        // 4 Angled Tail Fins matching Weapon_1.webp
+        const finGeo = new THREE.BoxGeometry(0.03, 0.28, 0.22);
+
+        const finV = new THREE.Mesh(finGeo, finMat);
+        finV.position.set(0, 0, -0.26);
+        group.add(finV);
+
+        const finH = new THREE.Mesh(finGeo, finMat);
+        finH.rotation.z = Math.PI / 2;
+        finH.position.set(0, 0, -0.26);
+        group.add(finH);
+
+        group.scale.set(1.18, 1.18, 1.18);
+
+        return group;
+    }
+
     spawnBullet(originX, originZ) {
-        const bulletGeo = new THREE.ConeGeometry(0.075, 0.48, 8);
-        const bulletMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-        const bulletMesh = new THREE.Mesh(bulletGeo, bulletMat);
-        bulletMesh.rotation.x = Math.PI / 2;
+        const isGolden = (this.bulletColor === 0xfacc15);
+        const bulletMesh = this.createRocketBulletMesh(isGolden);
         bulletMesh.position.set(originX, 0.62, originZ);
 
         this.scene.add(bulletMesh);
@@ -1727,9 +1782,10 @@ export class Game3D {
         });
     }
 
-    spawnSparkBurst(x, y, z) {
+    spawnSparkBurst(x, y, z, color = null) {
+        const c = color || this.bulletColor || 0x38bdf8;
         for (let i = 0; i < 7; i++) {
-            this.spawnSparkParticle(x, y, z, 0x38bdf8);
+            this.spawnSparkParticle(x, y, z, c);
         }
     }
 
