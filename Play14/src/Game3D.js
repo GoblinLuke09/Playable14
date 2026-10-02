@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import skinModelUrl from './assets/Model/Skin_BF14.glb';
+import alliedModelUrl from './assets/Model/Athlete_05.glb';
+import enemyModelUrl from './assets/Model/Skin_BF14.glb';
 
 export class Game3D {
     constructor(container, options = {}) {
@@ -12,6 +13,7 @@ export class Game3D {
         this.onLevelComplete = options.onLevelComplete || (() => {});
         this.onGameOver = options.onGameOver || (() => {});
         this.onCoinCollect = options.onCoinCollect || (() => {});
+        this.onLevel2Arrived = options.onLevel2Arrived || (() => {});
 
         this.width = container.clientWidth || window.innerWidth;
         this.height = container.clientHeight || window.innerHeight;
@@ -19,6 +21,14 @@ export class Game3D {
         this.isGameActive = true;
         this.isLevelFinished = false;
         this.isPlayerInteracted = false;
+
+        // Level management
+        this.currentLevel = 1;
+        this.isTransitioning = false;
+        this.levelBaselineZ = 0.0;
+        this.cameraZOffset = -18;
+        this.cameraYOffset = 22;
+        this.targetCameraLookZ = 16;
 
         // Player Cannon Position & Controls
         this.cannonX = 0;
@@ -122,7 +132,7 @@ export class Game3D {
     }
 
     createEnvironment() {
-        const groundGeo = new THREE.PlaneGeometry(120, 180);
+        const groundGeo = new THREE.PlaneGeometry(120, 260);
         const canvas = document.createElement('canvas');
         canvas.width = 256;
         canvas.height = 256;
@@ -136,19 +146,19 @@ export class Game3D {
         const grassTex = new THREE.CanvasTexture(canvas);
         grassTex.wrapS = THREE.RepeatWrapping;
         grassTex.wrapT = THREE.RepeatWrapping;
-        grassTex.repeat.set(12, 18);
+        grassTex.repeat.set(12, 26);
 
         const groundMat = new THREE.MeshLambertMaterial({ map: grassTex });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.rotation.x = -Math.PI / 2;
-        ground.position.set(0, -0.08, 20);
+        ground.position.set(0, -0.08, 55);
         ground.receiveShadow = true;
         this.scene.add(ground);
     }
 
     createTrack() {
         this.trackGroup = new THREE.Group();
-        const roadLength = 70;
+        const roadLength = 155;
 
         const roadMat = new THREE.MeshStandardMaterial({
             color: 0xb5bcc7,
@@ -161,13 +171,20 @@ export class Game3D {
         roadMesh.receiveShadow = true;
         this.trackGroup.add(roadMesh);
 
-        // White Guideline Baseline at Z = 0
+        // White Guideline Baseline for Level 1 at Z = 0
         const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
         const lineGeo = new THREE.PlaneGeometry(7.2, 0.22);
         const lineMesh = new THREE.Mesh(lineGeo, lineMat);
         lineMesh.rotation.x = -Math.PI / 2;
         lineMesh.position.set(0, 0.02, 0.0);
         this.trackGroup.add(lineMesh);
+
+        // White Guideline Baseline for Level 2 at Z = 50.0
+        const line2Geo = new THREE.PlaneGeometry(7.2, 0.22);
+        const line2Mesh = new THREE.Mesh(line2Geo, lineMat);
+        line2Mesh.rotation.x = -Math.PI / 2;
+        line2Mesh.position.set(0, 0.02, 50.0);
+        this.trackGroup.add(line2Mesh);
 
         const curbMat = new THREE.MeshLambertMaterial({ color: 0x8a93a0 });
         [-3.85, 3.85].forEach(cx => {
@@ -266,11 +283,13 @@ export class Game3D {
     }
 
     // -----------------------------------------------------------------
-    // LEVEL ENVIRONMENT & HIGH-VISIBILITY MULTIPLIERS
+    // LEVEL ENVIRONMENT & MULTIPLIERS (LEVEL 1 & LEVEL 2)
     // -----------------------------------------------------------------
     createLevelCourse() {
+        // ================= LEVEL 1 (Z: 0 -> 45) =================
         // 1. GATE 1 (Left: x2) at Z = 13.5
         const gate1 = this.createMultiplierGate('gate_1', -2.0, 13.5, 2.8, { type: 'mult', val: 2, label: 'x2' });
+        gate1.level = 1;
         this.gates.push(gate1);
 
         // 2. YELLOW HP BLOCK 1 (Right: HP 180) at Z = 14.0 + Gate x3 beneath it
@@ -283,9 +302,11 @@ export class Game3D {
             hp: 180,
             id: 'block_274'
         });
+        yellowBlock1.level = 1;
         this.yellowBlocks.push(yellowBlock1);
 
         const gate2 = this.createMultiplierGate('gate_2', 1.8, 15.5, 2.2, { type: 'mult', val: 3, label: 'x3' });
+        gate2.level = 1;
         this.gates.push(gate2);
 
         // 3. WARP PIPE 1 (Green curved pipe linking Middle to Gate x3)
@@ -302,6 +323,7 @@ export class Game3D {
             exitPos: new THREE.Vector3(1.7, 0.9, 18.2),
             exitVelocity: new THREE.Vector3(-0.2, 0.1, 7.5)
         });
+        pipe1.level = 1;
         this.warpPipes.push(pipe1);
 
         // 4. GATE x3 at exit of Pipe 1 (Z = 18.2, X = 1.7)
@@ -310,6 +332,7 @@ export class Game3D {
             val: 3,
             label: 'x3'
         });
+        gatePipeExit.level = 1;
         this.gates.push(gatePipeExit);
 
         // 5. RED ENEMY BARRACKS 1 (Left: HP 30) at Z = 25.5
@@ -324,10 +347,12 @@ export class Game3D {
             spawnInterval: 0.65,
             id: 'barracks_43'
         });
+        barracks1.level = 1;
         this.enemyBarracks.push(barracks1);
 
         // 6. GATE x2 behind Barracks 1
         const gate3 = this.createMultiplierGate('gate_4', -1.8, 29.5, 2.0, { type: 'mult', val: 2, label: 'x2' });
+        gate3.level = 1;
         this.gates.push(gate3);
 
         // 7. YELLOW BLOCK 2 (Right: HP 35) at Z = 27.0
@@ -340,12 +365,14 @@ export class Game3D {
             hp: 35,
             id: 'block_50'
         });
+        yellowBlock2.level = 1;
         this.yellowBlocks.push(yellowBlock2);
 
         const gate4 = this.createMultiplierGate('gate_5', 1.6, 28.5, 2.0, { type: 'add', val: 5, label: '+5' });
+        gate4.level = 1;
         this.gates.push(gate4);
 
-        // 8. RED ENEMY BARRACKS 2 (Center-Left: HP 45 - Final Boss Castle) at Z = 41.0
+        // 8. RED ENEMY BARRACKS 2 (Center-Left: HP 45 - Level 1 Boss Castle) at Z = 41.0
         const barracks2 = this.createEnemyBarracks({
             x: -1.6,
             z: 41.0,
@@ -357,7 +384,103 @@ export class Game3D {
             spawnInterval: 0.55,
             id: 'barracks_50'
         });
+        barracks2.level = 1;
         this.enemyBarracks.push(barracks2);
+
+        // ================= LEVEL 2: SUPER HARD LEVEL (Z: 50 -> 125) =================
+        // Baseline 2 is at Z = 50.0 (Cannon will move to Z = 48.0)
+
+        // 1. Double High-speed Multiplier Gates at Z = 63.5
+        const l2Gate1 = this.createMultiplierGate('l2_gate_1', -1.8, 63.5, 2.6, { type: 'mult', val: 3, label: 'x3' });
+        l2Gate1.level = 2;
+        this.gates.push(l2Gate1);
+
+        const l2Gate2 = this.createMultiplierGate('l2_gate_2', 1.8, 63.5, 2.6, { type: 'mult', val: 2, label: 'x2' });
+        l2Gate2.level = 2;
+        this.gates.push(l2Gate2);
+
+        // 2. Twin Warp Pipes (Crossing Pipe System) at Z = 65 -> 74
+        const pipe2 = this.createWarpPipe({
+            points: [
+                new THREE.Vector3(-1.8, 0.55, 66.0),
+                new THREE.Vector3(-1.2, 2.8, 68.5),
+                new THREE.Vector3(0.0, 4.8, 71.0),
+                new THREE.Vector3(1.4, 3.2, 73.0),
+                new THREE.Vector3(1.8, 0.9, 74.5)
+            ],
+            intakePos: new THREE.Vector3(-1.8, 0.55, 66.0),
+            exitPos: new THREE.Vector3(1.8, 0.9, 74.5),
+            exitVelocity: new THREE.Vector3(0, 0, 8.0)
+        });
+        pipe2.level = 2;
+        this.warpPipes.push(pipe2);
+
+        // 3. Massive HP Fortress Block in the middle (HP 250) at Z = 73.0
+        const l2YellowBlock1 = this.createYellowHpBlock({
+            x: -1.6,
+            z: 73.0,
+            width: 2.6,
+            height: 1.5,
+            depth: 1.4,
+            hp: 250,
+            id: 'l2_block_1'
+        });
+        l2YellowBlock1.level = 2;
+        this.yellowBlocks.push(l2YellowBlock1);
+
+        const l2Gate3 = this.createMultiplierGate('l2_gate_3', 1.8, 75.0, 2.4, { type: 'mult', val: 4, label: 'x4' });
+        l2Gate3.level = 2;
+        this.gates.push(l2Gate3);
+
+        // 4. Heavy Vanguard Enemy Bunker at Z = 82.0 (HP 80, fast spawn rate 0.35s)
+        const l2Barracks1 = this.createEnemyBarracks({
+            x: 1.7,
+            z: 82.0,
+            width: 2.4,
+            height: 2.8,
+            depth: 2.2,
+            hp: 80,
+            maxHp: 80,
+            spawnInterval: 0.35,
+            id: 'l2_barracks_1'
+        });
+        l2Barracks1.level = 2;
+        this.enemyBarracks.push(l2Barracks1);
+
+        // 5. Gate x5 Behind Vanguard at Z = 87.0
+        const l2Gate4 = this.createMultiplierGate('l2_gate_4', -1.7, 87.0, 2.6, { type: 'mult', val: 5, label: 'x5' });
+        l2Gate4.level = 2;
+        this.gates.push(l2Gate4);
+
+        // 6. Secondary Heavy Outpost at Z = 92.0 (HP 90)
+        const l2Barracks2 = this.createEnemyBarracks({
+            x: -1.7,
+            z: 92.0,
+            width: 2.4,
+            height: 2.8,
+            depth: 2.2,
+            hp: 90,
+            maxHp: 90,
+            spawnInterval: 0.32,
+            id: 'l2_barracks_2'
+        });
+        l2Barracks2.level = 2;
+        this.enemyBarracks.push(l2Barracks2);
+
+        // 7. FINAL MEGA BOSS CASTLE (Center: HP 150 - Super Hard Mega Boss) at Z = 108.0
+        const l2MegaBoss = this.createEnemyBarracks({
+            x: 0.0,
+            z: 108.0,
+            width: 3.2,
+            height: 3.6,
+            depth: 2.6,
+            hp: 150,
+            maxHp: 150,
+            spawnInterval: 0.28,
+            id: 'l2_megaboss'
+        });
+        l2MegaBoss.level = 2;
+        this.enemyBarracks.push(l2MegaBoss);
     }
 
     createMultiplierGate(id, x, z, width, data) {
@@ -718,54 +841,59 @@ export class Game3D {
     loadPlayerModels() {
         const loader = new GLTFLoader();
 
-        const setupModels = (gltf) => {
-            this.bluePlayerBaseModel = gltf.scene;
-            this.bluePlayerBaseModel.scale.set(0.48, 0.48, 0.48);
-
-            this.bluePlayerBaseModel.traverse((node) => {
-                if (node.isMesh || node.isSkinnedMesh) {
-                    node.castShadow = false;
-                    node.receiveShadow = false;
-                    node.material = new THREE.MeshStandardMaterial({
-                        color: 0x0ea5e9,
-                        roughness: 0.3,
-                        metalness: 0.1,
-                        skinning: true
+        const loadModel = (url) => {
+            return fetch(url)
+                .then(res => res.arrayBuffer())
+                .then(buffer => new Promise((resolve, reject) => {
+                    loader.parse(buffer, '', resolve, (err) => {
+                        loader.load(url, resolve, undefined, reject);
                     });
-                    node.material.needsUpdate = true;
-                }
-            });
-
-            this.redPlayerBaseModel = SkeletonUtils.clone(gltf.scene);
-            this.redPlayerBaseModel.scale.set(0.48, 0.48, 0.48);
-            this.redPlayerBaseModel.traverse((node) => {
-                if (node.isMesh || node.isSkinnedMesh) {
-                    node.castShadow = false;
-                    node.receiveShadow = false;
-                    node.material = new THREE.MeshStandardMaterial({
-                        color: 0xef4444,
-                        roughness: 0.3,
-                        metalness: 0.1,
-                        skinning: true
-                    });
-                    node.material.needsUpdate = true;
-                }
-            });
-
-            this.modelLoaded = true;
-            console.log('Skin_BF14 models loaded successfully!');
+                }))
+                .catch(() => new Promise((resolve, reject) => {
+                    loader.load(url, resolve, undefined, reject);
+                }));
         };
 
-        fetch(skinModelUrl)
-            .then(res => res.arrayBuffer())
-            .then(buffer => {
-                loader.parse(buffer, '', setupModels, (err) => {
-                    console.warn('Parse fallback:', err);
-                    loader.load(skinModelUrl, setupModels, undefined, () => this.fallbackHero());
+        Promise.all([loadModel(alliedModelUrl), loadModel(enemyModelUrl)])
+            .then(([alliedGltf, enemyGltf]) => {
+                // 1. ALLIED TROOPS: Athlete_05.glb with original model texture & skinning enabled
+                this.bluePlayerBaseModel = alliedGltf.scene;
+                this.bluePlayerBaseModel.scale.set(0.48, 0.48, 0.48);
+                this.bluePlayerBaseModel.traverse((node) => {
+                    if (node.isMesh || node.isSkinnedMesh) {
+                        node.castShadow = false;
+                        node.receiveShadow = false;
+                        if (node.material) {
+                            node.material = node.material.clone();
+                            node.material.skinning = true;
+                            node.material.needsUpdate = true;
+                        }
+                    }
                 });
+
+                // 2. ENEMY TROOPS: Skin_BF14.glb with Red Tint
+                this.redPlayerBaseModel = enemyGltf.scene;
+                this.redPlayerBaseModel.scale.set(0.48, 0.48, 0.48);
+                this.redPlayerBaseModel.traverse((node) => {
+                    if (node.isMesh || node.isSkinnedMesh) {
+                        node.castShadow = false;
+                        node.receiveShadow = false;
+                        node.material = new THREE.MeshStandardMaterial({
+                            color: 0xef4444,
+                            roughness: 0.3,
+                            metalness: 0.1,
+                            skinning: true
+                        });
+                        node.material.needsUpdate = true;
+                    }
+                });
+
+                this.modelLoaded = true;
+                console.log('Models loaded: Allied (Athlete_05 original) & Enemy (Skin_BF14 red)');
             })
-            .catch(() => {
-                loader.load(skinModelUrl, setupModels, undefined, () => this.fallbackHero());
+            .catch((err) => {
+                console.warn('Model loading fallback:', err);
+                this.fallbackHero();
             });
     }
 
@@ -969,8 +1097,8 @@ export class Game3D {
         }
 
         if (this.isGameActive && !this.isLevelFinished) {
-            // Player allied mobs shoot ONLY after player touches/drags the cannon
-            if (this.isPlayerInteracted) {
+            // Player allied mobs shoot ONLY after player interacted AND NOT transitioning between levels
+            if (this.isPlayerInteracted && !this.isTransitioning) {
                 this.shootTimer += delta;
                 if (this.shootTimer >= this.shootInterval && this.modelLoaded) {
                     this.shootTimer = 0;
@@ -980,30 +1108,109 @@ export class Game3D {
                 }
             }
 
-            // Enemy mobs spawn and advance normally from the start
-            this.enemyBarracks.forEach(barracks => {
-                if (barracks.isDestroyed) return;
-                barracks.spawnTimer += delta;
-                if (barracks.spawnTimer >= barracks.spawnInterval && this.modelLoaded) {
-                    barracks.spawnTimer = 0;
-                    this.spawnEnemyMob(barracks.x + (Math.random() - 0.5) * 0.8, barracks.z - 1.2);
-                }
-            });
+            // Enemy mobs spawn and advance for the active level
+            if (!this.isTransitioning) {
+                this.enemyBarracks.filter(b => b.level === this.currentLevel).forEach(barracks => {
+                    if (barracks.isDestroyed) return;
+                    barracks.spawnTimer += delta;
+                    if (barracks.spawnTimer >= barracks.spawnInterval && this.modelLoaded) {
+                        barracks.spawnTimer = 0;
+                        this.spawnEnemyMob(barracks.x + (Math.random() - 0.5) * 0.8, barracks.z - 1.2);
+                    }
+                });
+            }
 
             this.updateAlliedMobs(delta);
             this.updateEnemyMobs(delta);
-
             this.handleCombatAndInteractions();
 
-            const allDestroyed = this.enemyBarracks.every(b => b.isDestroyed);
-            if (allDestroyed && !this.isLevelFinished) {
-                this.isLevelFinished = true;
-                this.onLevelComplete();
+            const activeLevelBarracks = this.enemyBarracks.filter(b => b.level === this.currentLevel);
+            const allDestroyed = activeLevelBarracks.length > 0 && activeLevelBarracks.every(b => b.isDestroyed);
+
+            if (allDestroyed && !this.isLevelFinished && !this.isTransitioning) {
+                if (this.currentLevel === 1) {
+                    this.advanceToLevel2();
+                } else {
+                    this.isLevelFinished = true;
+                    this.onLevelComplete();
+                }
             }
         }
 
+        // Camera smoothly follows cannon during gameplay and transitions
+        const targetCamZ = this.cannonZ + this.cameraZOffset;
+        const targetCamY = this.cameraYOffset;
+        const targetLookZ = this.cannonZ + this.targetCameraLookZ;
+        this.camera.position.z += (targetCamZ - this.camera.position.z) * 5 * delta;
+        this.camera.position.y += (targetCamY - this.camera.position.y) * 5 * delta;
+        this.camera.lookAt(0, 0, targetLookZ);
+
         this.updateDebrisAndParticles(delta);
         this.renderer.render(this.scene, this.camera);
+    }
+
+    advanceToLevel2() {
+        this.isTransitioning = true;
+        this.currentLevel = 2;
+
+        // 1. Destroy and blow up all remaining Level 1 objects (gates, yellow blocks, pipes)
+        this.gates.filter(g => g.level === 1).forEach(g => {
+            this.spawnDebrisExplosion(g.group.position, 0x10b981, 14);
+            this.scene.remove(g.group);
+        });
+
+        this.yellowBlocks.filter(yb => yb.level === 1).forEach(yb => {
+            this.spawnDebrisExplosion(yb.group.position, 0xf59e0b, 16);
+            this.scene.remove(yb.group);
+        });
+
+        this.warpPipes.filter(wp => wp.level === 1).forEach(wp => {
+            this.spawnDebrisExplosion(wp.intakePos, 0x22c55e, 12);
+            this.scene.remove(wp.mesh);
+        });
+
+        // Clear existing allied mobs that passed
+        this.alliedMobs.forEach(m => {
+            this.spawnSparkBurst(m.x, 0.6, m.z, 0x38bdf8);
+            this.scene.remove(m.model);
+        });
+        this.alliedMobs = [];
+
+        // 2. Animate Cannon smoothly rolling forward from Z = -2.0 to Level 2 Baseline at Z = 48.0
+        const startZ = this.cannonZ;
+        const targetZ = 48.0;
+        const startX = this.cannonX;
+        const targetX = 0;
+        const duration = 2.4; // 2.4s cinematic march
+        let elapsed = 0;
+
+        const marchInterval = setInterval(() => {
+            elapsed += 0.03;
+            const progress = Math.min(1.0, elapsed / duration);
+            // Ease in-out cubic
+            const ease = progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+            this.cannonZ = startZ + (targetZ - startZ) * ease;
+            this.cannonX = startX + (targetX - startX) * ease;
+            this.targetCannonX = this.cannonX;
+            this.cannonGroup.position.set(this.cannonX, 0, this.cannonZ);
+
+            // Roll wheels while moving forward
+            this.wheels.forEach(w => {
+                w.rotation.x += 0.35;
+            });
+
+            if (progress >= 1.0) {
+                clearInterval(marchInterval);
+                this.cannonZ = targetZ;
+                this.cannonX = 0;
+                this.levelBaselineZ = 50.0;
+                this.isTransitioning = false;
+                this.isPlayerInteracted = true; // Resume shooting immediately upon arriving at Level 2 baseline
+                this.shootTimer = 0;
+                this.onLevel2Arrived();
+            }
+        }, 30);
     }
 
     animateMobBones(mob, isEnemy = false) {
@@ -1142,7 +1349,8 @@ export class Game3D {
                 }
             });
 
-            if (mob.z > 55) {
+            const maxTrackZ = this.currentLevel === 1 ? 55 : 130;
+            if (mob.z > maxTrackZ) {
                 mob.isAlive = false;
             }
         }
@@ -1169,8 +1377,8 @@ export class Game3D {
 
             this.animateMobBones(mob, true);
 
-            // --- DEFEAT CONDITION: Enemy crosses Cannon Baseline (Z <= 0.0) ---
-            if (mob.z <= 0.0) {
+            // --- DEFEAT CONDITION: Enemy crosses Active Level Baseline ---
+            if (!this.isTransitioning && mob.z <= this.levelBaselineZ) {
                 this.triggerGameOver();
                 return;
             }

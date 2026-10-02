@@ -84,6 +84,9 @@ export class GameScene extends Phaser.Scene {
             this.game.canvas.style.pointerEvents = 'auto';
         }
 
+        this.isLevel2Active = false;
+        this.clicklevel2 = false;
+
         // Initialize 3D Engine with Model Skin_BF14.glb & Gate multipliers
         const container = document.getElementById('game-container');
         this.game3d = new Game3D(container, {
@@ -92,7 +95,11 @@ export class GameScene extends Phaser.Scene {
             onSquadCountChange: (count) => this.handleSquadCountChange(count),
             onCoinCollect: (data) => this.handleCoinCollect(data),
             onLevelComplete: () => this.handleVictory(),
-            onGameOver: () => this.handleDefeat()
+            onGameOver: () => this.handleDefeat(),
+            onLevel2Arrived: () => {
+                this.isLevel2Active = true;
+                console.log('Cannon reached Level 2 baseline: Screen taps now trigger ShowStore()');
+            }
         });
 
         // Create only Tutorial Drag Hint on initial screen
@@ -100,6 +107,12 @@ export class GameScene extends Phaser.Scene {
 
         // Input listener
         this.input.on('pointerdown', () => {
+            if (this.isLevel2Active && !this.isclicklevel2) {
+                this.ShowStore();
+                this.isclicklevel2 = true;
+                return;
+            }
+
             if (!this.gameStarted) {
                 this.startGame();
 
@@ -613,8 +626,8 @@ export class GameScene extends Phaser.Scene {
                     window.gameEnd();
                 }
 
-        if (this.hasTriggeredStore) return;
-        this.hasTriggeredStore = true;
+        // if (this.hasTriggeredStore) return;
+        // this.hasTriggeredStore = true;
 
         const storeUrl = "https://play.google.com/store/apps/details?id=com.bf14.epic.run.survivor.game";
         console.log("Playturbo: ShowStore triggered (CTA Click)");
