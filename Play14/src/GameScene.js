@@ -813,6 +813,15 @@ export class GameScene extends Phaser.Scene {
         //if (this.hasTriggeredStore) return;
         //this.hasTriggeredStore = true;
 
+        if (typeof FbPlayableAd !== 'undefined' &&
+            typeof FbPlayableAd.onCTAClick === 'function') {
+
+            console.log("Playable: Meta CTA");
+
+            FbPlayableAd.onCTAClick();
+            return;
+        }
+
         const storeUrl = "https://play.google.com/store/apps/details?id=com.bf14.epic.run.survivor.game";
         console.log("Playturbo: ShowStore triggered (CTA Click)");
 
