@@ -87,20 +87,20 @@ export class Game3D {
 
     initThree() {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0xa7d898);
-        this.scene.fog = new THREE.Fog(0xa7d898, 50, 110);
+        // Warm sand beige background & fog matching the reference screenshot exactly
+        this.scene.background = new THREE.Color(0xd6c2a4);
+        this.scene.fog = new THREE.Fog(0xd6c2a4, 60, 150);
 
-        this.camera = new THREE.PerspectiveCamera(50, this.width / this.height, 0.1, 250);
-        this.camera.position.set(0, 22, -18);
-        this.camera.lookAt(0, 0, 16);
+        this.camera = new THREE.PerspectiveCamera(48, this.width / this.height, 0.1, 250);
+        this.camera.position.set(0, 21, -16);
+        this.camera.lookAt(0, 0, 18);
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
         this.renderer.setSize(this.width, this.height);
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.15;
+        this.renderer.outputEncoding = THREE.sRGBEncoding;
 
         this.renderer.domElement.style.position = 'absolute';
         this.renderer.domElement.style.top = '0';
@@ -110,13 +110,14 @@ export class Game3D {
         this.renderer.domElement.style.zIndex = '1';
         this.container.appendChild(this.renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
+        // Calibrated vibrant, high-contrast direct and ambient lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
         this.scene.add(ambientLight);
 
-        const hemiLight = new THREE.HemisphereLight(0xfff7ed, 0x88bb66, 0.55);
+        const hemiLight = new THREE.HemisphereLight(0xfffaed, 0x94826b, 0.35);
         this.scene.add(hemiLight);
 
-        this.dirLight = new THREE.DirectionalLight(0xfffaed, 1.4);
+        this.dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
         this.dirLight.position.set(-14, 32, -10);
         this.dirLight.castShadow = true;
         this.dirLight.shadow.mapSize.width = 1024;
@@ -132,21 +133,14 @@ export class Game3D {
     }
 
     createEnvironment() {
-        const groundGeo = new THREE.PlaneGeometry(120, 260);
+        const groundGeo = new THREE.PlaneGeometry(260, 260);
         const canvas = document.createElement('canvas');
-        canvas.width = 256;
-        canvas.height = 256;
+        canvas.width = 128;
+        canvas.height = 128;
         const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#a1d893';
-        ctx.fillRect(0, 0, 256, 256);
-        ctx.fillStyle = '#94ce85';
-        for (let i = 0; i < 256; i += 32) {
-            ctx.fillRect(0, i, 256, 16);
-        }
+        ctx.fillStyle = '#d6c2a4';
+        ctx.fillRect(0, 0, 128, 128);
         const grassTex = new THREE.CanvasTexture(canvas);
-        grassTex.wrapS = THREE.RepeatWrapping;
-        grassTex.wrapT = THREE.RepeatWrapping;
-        grassTex.repeat.set(12, 26);
 
         const groundMat = new THREE.MeshLambertMaterial({ map: grassTex });
         const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -160,9 +154,28 @@ export class Game3D {
         this.trackGroup = new THREE.Group();
         const roadLength = 155;
 
+        // 1. Alternating Lawn Stripes Texture (Làn sọc xanh tươi sáng & đậm nét chuẩn ảnh mẫu)
+        const trackCanvas = document.createElement('canvas');
+        trackCanvas.width = 128;
+        trackCanvas.height = 256;
+        const tCtx = trackCanvas.getContext('2d');
+
+        // Stripe 1: Fresh Bright Lawn Mint Green (Làn xanh nhạt)
+        tCtx.fillStyle = '#bcf0b5';
+        tCtx.fillRect(0, 0, 128, 128);
+
+        // Stripe 2: Rich Meadow Grass Green (Làn xanh đậm)
+        tCtx.fillStyle = '#56a760';
+        tCtx.fillRect(0, 128, 128, 128);
+
+        const trackTex = new THREE.CanvasTexture(trackCanvas);
+        trackTex.wrapS = THREE.RepeatWrapping;
+        trackTex.wrapT = THREE.RepeatWrapping;
+        trackTex.repeat.set(1, 32);
+
         const roadMat = new THREE.MeshStandardMaterial({
-            color: 0xb5bcc7,
-            roughness: 0.85,
+            map: trackTex,
+            roughness: 0.6,
             metalness: 0.05
         });
         const roadGeo = new THREE.BoxGeometry(7.6, 0.6, roadLength);
@@ -173,26 +186,58 @@ export class Game3D {
 
         // White Guideline Baseline for Level 1 at Z = 0
         const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const lineGeo = new THREE.PlaneGeometry(7.2, 0.22);
+        const lineGeo = new THREE.PlaneGeometry(7.2, 0.24);
         const lineMesh = new THREE.Mesh(lineGeo, lineMat);
         lineMesh.rotation.x = -Math.PI / 2;
         lineMesh.position.set(0, 0.02, 0.0);
         this.trackGroup.add(lineMesh);
 
         // White Guideline Baseline for Level 2 at Z = 50.0
-        const line2Geo = new THREE.PlaneGeometry(7.2, 0.22);
+        const line2Geo = new THREE.PlaneGeometry(7.2, 0.24);
         const line2Mesh = new THREE.Mesh(line2Geo, lineMat);
         line2Mesh.rotation.x = -Math.PI / 2;
         line2Mesh.position.set(0, 0.02, 50.0);
         this.trackGroup.add(line2Mesh);
 
-        const curbMat = new THREE.MeshLambertMaterial({ color: 0x8a93a0 });
+        // 2. White Curbs (Viền trắng 2 bên mép đường)
+        const curbMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
         [-3.85, 3.85].forEach(cx => {
-            const curbGeo = new THREE.BoxGeometry(0.2, 0.7, roadLength);
+            const curbGeo = new THREE.BoxGeometry(0.18, 0.45, roadLength);
             const curbMesh = new THREE.Mesh(curbGeo, curbMat);
-            curbMesh.position.set(cx, -0.25, roadLength / 2 - 8);
+            curbMesh.position.set(cx, -0.15, roadLength / 2 - 8);
             curbMesh.castShadow = true;
             this.trackGroup.add(curbMesh);
+        });
+
+        // 3. White Stadium Fences (Hàng rào thể thao dọc 2 bên lề đường)
+        const fencePostGeo = new THREE.CylinderGeometry(0.045, 0.045, 1.1, 8);
+        const fencePostMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.3 });
+        const railMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
+
+        [-3.95, 3.95].forEach(sideX => {
+            // Horizontal upper rail
+            const railGeo = new THREE.BoxGeometry(0.05, 0.06, roadLength);
+            const railMesh = new THREE.Mesh(railGeo, railMat);
+            railMesh.position.set(sideX, 0.85, roadLength / 2 - 8);
+            this.trackGroup.add(railMesh);
+
+            // Horizontal middle rail
+            const midRailMesh = new THREE.Mesh(railGeo, railMat);
+            midRailMesh.position.set(sideX, 0.45, roadLength / 2 - 8);
+            this.trackGroup.add(midRailMesh);
+
+            // Vertical fence posts spaced every 2.4 meters
+            for (let z = -8; z <= roadLength - 8; z += 2.4) {
+                const post = new THREE.Mesh(fencePostGeo, fencePostMat);
+                post.position.set(sideX, 0.55, z);
+                post.castShadow = true;
+                this.trackGroup.add(post);
+
+                // Small decorative post cap
+                const cap = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), fencePostMat);
+                cap.position.set(sideX, 1.12, z);
+                this.trackGroup.add(cap);
+            }
         });
 
         this.scene.add(this.trackGroup);
@@ -372,15 +417,15 @@ export class Game3D {
         gate4.level = 1;
         this.gates.push(gate4);
 
-        // 8. RED ENEMY BARRACKS 2 (Center-Left: HP 45 - Level 1 Boss Castle) at Z = 41.0
+        // 8. SPEEDOMETER DIAL GAUGE STATION (Center: HP 50 - Level 1 Boss Station) at Z = 41.0
         const barracks2 = this.createEnemyBarracks({
-            x: -1.6,
+            x: 0.0,
             z: 41.0,
-            width: 2.4,
-            height: 3.0,
-            depth: 2.2,
-            hp: 45,
-            maxHp: 45,
+            width: 2.8,
+            height: 3.2,
+            depth: 2.4,
+            hp: 50,
+            maxHp: 50,
             spawnInterval: 0.55,
             id: 'barracks_50'
         });
@@ -579,19 +624,95 @@ export class Game3D {
 
     createYellowHpBlock(config) {
         const group = new THREE.Group();
-        group.position.set(config.x, config.height / 2, config.z);
+        const radius = (config.width || 2.2) * 0.52;
+        const height = config.height || 2.2;
+        group.position.set(config.x, height / 2, config.z);
 
-        const blockMat = new THREE.MeshStandardMaterial({
-            color: 0xf59e0b,
-            roughness: 0.35,
+        // 1. Procedural Carved Diamond-Stone Pattern Texture for the Bricks
+        const stoneCanvas = document.createElement('canvas');
+        stoneCanvas.width = 128;
+        stoneCanvas.height = 128;
+        const sCtx = stoneCanvas.getContext('2d');
+        sCtx.fillStyle = '#475569';
+        sCtx.fillRect(0, 0, 128, 128);
+        sCtx.strokeStyle = '#1e293b';
+        sCtx.lineWidth = 3;
+        sCtx.strokeRect(0, 0, 128, 128);
+        // Diamond relief
+        sCtx.fillStyle = '#64748b';
+        sCtx.beginPath();
+        sCtx.moveTo(64, 12);
+        sCtx.lineTo(116, 64);
+        sCtx.lineTo(64, 116);
+        sCtx.lineTo(12, 64);
+        sCtx.closePath();
+        sCtx.fill();
+        sCtx.fillStyle = '#94a3b8';
+        sCtx.beginPath();
+        sCtx.moveTo(64, 28);
+        sCtx.lineTo(100, 64);
+        sCtx.lineTo(64, 100);
+        sCtx.lineTo(28, 64);
+        sCtx.closePath();
+        sCtx.fill();
+
+        const stoneTex = new THREE.CanvasTexture(stoneCanvas);
+        const brickMat = new THREE.MeshStandardMaterial({
+            map: stoneTex,
+            roughness: 0.65,
             metalness: 0.1
         });
-        const blockGeo = new THREE.BoxGeometry(config.width, config.height, config.depth);
-        const blockMesh = new THREE.Mesh(blockGeo, blockMat);
-        blockMesh.castShadow = true;
-        blockMesh.receiveShadow = true;
-        group.add(blockMesh);
 
+        // 2. Build the Tower from Actual 3D Brick Blocks (Khối trụ ghép khít từ 9 tầng x 18 viên gạch 3D)
+        const numLayers = 9;
+        const bricksPerLayer = 18;
+        const layerHeight = height / numLayers;
+        const arcLength = (2 * Math.PI * radius) / bricksPerLayer;
+        const brickWidth = arcLength * 1.04; // Tightly touching side by side without gaps
+        const brickDepth = radius * 0.32;
+        const brickGeo = new THREE.BoxGeometry(brickWidth, layerHeight * 0.98, brickDepth);
+
+        const allBricks = []; // Ordered from top layer (0) down to bottom layer (numLayers - 1)
+
+        for (let l = numLayers - 1; l >= 0; l--) {
+            const layerY = -height / 2 + (l + 0.5) * layerHeight;
+            const angleOffset = (l % 2) * (Math.PI / bricksPerLayer);
+            for (let b = 0; b < bricksPerLayer; b++) {
+                const angle = (b / bricksPerLayer) * Math.PI * 2 + angleOffset;
+                const bx = Math.cos(angle) * (radius - brickDepth * 0.35);
+                const bz = Math.sin(angle) * (radius - brickDepth * 0.35);
+
+                const bMesh = new THREE.Mesh(brickGeo, brickMat);
+                bMesh.position.set(bx, layerY, bz);
+                bMesh.rotation.y = -angle + Math.PI / 2;
+                bMesh.castShadow = true;
+                bMesh.receiveShadow = true;
+                group.add(bMesh);
+                allBricks.push(bMesh);
+            }
+        }
+
+        // Dark grey solid inner filler cylinder (Lõi đá bên trong)
+        const fillerGeo = new THREE.CylinderGeometry(radius * 0.68, radius * 0.68, height, 24);
+        const fillerMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+        const fillerMesh = new THREE.Mesh(fillerGeo, fillerMat);
+        group.add(fillerMesh);
+
+        // 3. Gold Decorative Top Rim with Inset Brown Core
+        const goldRimGeo = new THREE.CylinderGeometry(radius * 0.86, radius * 0.86, 0.26, 32);
+        const goldRimMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.35, metalness: 0.4 });
+        const goldRim = new THREE.Mesh(goldRimGeo, goldRimMat);
+        goldRim.position.y = height / 2 + 0.13;
+        goldRim.castShadow = true;
+        group.add(goldRim);
+
+        const topPlateGeo = new THREE.CylinderGeometry(radius * 0.68, radius * 0.68, 0.28, 32);
+        const topPlateMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.5 });
+        const topPlate = new THREE.Mesh(topPlateGeo, topPlateMat);
+        topPlate.position.y = height / 2 + 0.15;
+        group.add(topPlate);
+
+        // 4. Floating 3D HP Number centered on the front face of the cylinder
         const canvas = document.createElement('canvas');
         canvas.width = 256;
         canvas.height = 160;
@@ -602,8 +723,8 @@ export class Game3D {
             ctx.font = '900 96px "Arial Black", Impact, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.lineWidth = 18;
-            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 20;
+            ctx.strokeStyle = '#0f172a';
             ctx.strokeText(`${Math.max(0, Math.ceil(hp))}`, 128, 80);
             ctx.fillStyle = '#ffffff';
             ctx.fillText(`${Math.max(0, Math.ceil(hp))}`, 128, 80);
@@ -612,38 +733,98 @@ export class Game3D {
 
         const labelTex = new THREE.CanvasTexture(canvas);
         const labelMesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(config.width * 0.9, config.height * 0.8),
-            new THREE.MeshBasicMaterial({ map: labelTex, transparent: true, side: THREE.FrontSide })
+            new THREE.PlaneGeometry(radius * 1.8, radius * 1.1),
+            new THREE.MeshBasicMaterial({ map: labelTex, transparent: true, side: THREE.FrontSide, depthTest: false })
         );
-        labelMesh.position.set(0, 0, -config.depth / 2 - 0.02);
+        labelMesh.renderOrder = 998;
+        labelMesh.position.set(0, 0, -radius - 0.15);
         labelMesh.rotation.set(0, Math.PI, 0);
         group.add(labelMesh);
 
         this.scene.add(group);
 
+        let activeBricks = [...allBricks];
+
         const blockObj = {
             id: config.id,
             group: group,
-            blockMesh: blockMesh,
             x: config.x,
             z: config.z,
-            width: config.width,
-            height: config.height,
-            depth: config.depth,
+            width: radius * 2.2,
+            height: height,
+            depth: radius * 2.2,
             hp: config.hp,
             maxHp: config.hp,
             isDestroyed: false,
-            onHit: () => {
+            onHit: (damage = 2) => {
                 updateLabel(blockObj.hp);
                 labelTex.needsUpdate = true;
 
+                // Tách và cho bay tung toé các khối gạch thật sự từ tầng trên cùng xuống
+                const targetRemainingBricks = Math.max(0, Math.round((blockObj.hp / config.hp) * allBricks.length));
+                const bricksToRemove = Math.max(1, activeBricks.length - targetRemainingBricks);
+
+                for (let k = 0; k < bricksToRemove; k++) {
+                    if (activeBricks.length === 0) break;
+                    const brick = activeBricks.shift();
+
+                    const worldPos = new THREE.Vector3();
+                    brick.getWorldPosition(worldPos);
+                    group.remove(brick);
+
+                    // Biến chính viên gạch đó thành mảnh văng tung toé lên trời và rơi ra sau
+                    brick.position.copy(worldPos);
+                    brick.userData = {
+                        vx: (Math.random() - 0.5) * 8.0,
+                        vy: 4.5 + Math.random() * 5.5,
+                        vz: -1.5 - Math.random() * 5.0,
+                        rotX: (Math.random() - 0.5) * 16,
+                        rotY: (Math.random() - 0.5) * 16,
+                        life: 1.2
+                    };
+                    this.scene.add(brick);
+                    this.debrisList.push(brick);
+                }
+
+                // Tia lửa vàng va chạm
+                for (let s = 0; s < 3; s++) {
+                    this.spawnSparkBurst(
+                        config.x + (Math.random() - 0.5) * radius,
+                        height * 0.5 + Math.random() * 0.4,
+                        config.z - radius * 0.8,
+                        0xfacc15
+                    );
+                }
+
+                // Nhún nhẹ khi trúng đạn
                 group.scale.set(1.08, 0.94, 1.08);
                 setTimeout(() => {
                     if (group) group.scale.set(1.0, 1.0, 1.0);
                 }, 70);
             },
             onDestroy: () => {
-                this.spawnDebrisExplosion(group.position, 0xf59e0b, 16);
+                // Toàn bộ các khối gạch còn lại nổ tung toé
+                activeBricks.forEach(brick => {
+                    const worldPos = new THREE.Vector3();
+                    brick.getWorldPosition(worldPos);
+                    group.remove(brick);
+
+                    brick.position.copy(worldPos);
+                    brick.userData = {
+                        vx: (Math.random() - 0.5) * 10.0,
+                        vy: 4.5 + Math.random() * 6.5,
+                        vz: (Math.random() - 0.5) * 10.0,
+                        rotX: (Math.random() - 0.5) * 18,
+                        rotY: (Math.random() - 0.5) * 18,
+                        life: 1.3
+                    };
+                    this.scene.add(brick);
+                    this.debrisList.push(brick);
+                });
+                activeBricks = [];
+
+                this.spawnDebrisExplosion(group.position, 0x334155, 20);
+                this.spawnDebrisExplosion(group.position.clone().add(new THREE.Vector3(0, 0.8, 0)), 0xf59e0b, 15);
                 group.visible = false;
             }
         };
@@ -690,130 +871,229 @@ export class Game3D {
         const group = new THREE.Group();
         group.position.set(config.x, 0, config.z);
 
-        const redMainMat = new THREE.MeshStandardMaterial({ color: 0xff4136, roughness: 0.35, metalness: 0.1 });
-        const darkTrimMat = new THREE.MeshStandardMaterial({ color: 0x3d0c0c, roughness: 0.6 });
-        const doorInnerMat = new THREE.MeshStandardMaterial({ color: 0x8a3324, roughness: 0.5 });
-        const woodPoleMat = new THREE.MeshStandardMaterial({ color: 0x8d5b4c, roughness: 0.7 });
-        const brightRedFlagMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, side: THREE.DoubleSide });
+        const bW = config.width || 2.4;
+        const bH = config.height || 2.8;
+        const bD = config.depth || 2.2;
 
-        const bW = config.width || 2.2;
-        const bH = config.height || 2.6;
-        const bD = config.depth || 2.0;
+        // Materials for Speedometer Dial Station
+        const skyBlueMat = new THREE.MeshStandardMaterial({ color: 0x93c5fd, roughness: 0.3, metalness: 0.1 });
+        const darkBlueMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4 });
+        const brightRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.2 });
+        const dummySkinMat = new THREE.MeshStandardMaterial({ color: 0xe0a96d, roughness: 0.5 });
+        const dummyPantsMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.5 });
+        const goldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.4, roughness: 0.3 });
 
-        // 1. Dark Foundation Base Rim
-        const baseRim = new THREE.Mesh(new THREE.BoxGeometry(bW * 1.04, 0.28, bD * 1.04), darkTrimMat);
-        baseRim.position.y = 0.14;
-        baseRim.castShadow = true;
-        group.add(baseRim);
+        // 1. Circular Sky Blue Base Platform
+        const basePlatform = new THREE.Mesh(new THREE.CylinderGeometry(bW * 0.65, bW * 0.70, 0.25, 24), skyBlueMat);
+        basePlatform.position.y = 0.125;
+        basePlatform.castShadow = true;
+        basePlatform.receiveShadow = true;
+        group.add(basePlatform);
 
-        // 2. Main Red Building Body (Blocky Bunker)
-        const mainBody = new THREE.Mesh(new THREE.BoxGeometry(bW, bH * 0.95, bD), redMainMat);
-        mainBody.position.y = (bH * 0.95) / 2 + 0.14;
-        mainBody.castShadow = true;
-        mainBody.receiveShadow = true;
-        group.add(mainBody);
+        // 2. Dual Side Sky Blue Pillars with Decorative Spherical Caps
+        [-bW * 0.52, bW * 0.52].forEach(px => {
+            const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.14, bH * 0.9, 16), skyBlueMat);
+            pillar.position.set(px, (bH * 0.9) / 2 + 0.25, 0);
+            pillar.castShadow = true;
+            group.add(pillar);
 
-        // 3. Dark Upper Roof Cap / Trim
-        const roofTrim = new THREE.Mesh(new THREE.BoxGeometry(bW * 1.05, 0.22, bD * 1.05), darkTrimMat);
-        roofTrim.position.y = bH * 0.95 + 0.14 + 0.11;
-        roofTrim.castShadow = true;
-        group.add(roofTrim);
-
-        // 4. Dark Side Pillars (Left & Right trims)
-        [-bW / 2 - 0.02, bW / 2 + 0.02].forEach(px => {
-            const sideTrim = new THREE.Mesh(new THREE.BoxGeometry(0.12, bH * 0.95, bD * 0.8), darkTrimMat);
-            sideTrim.position.set(px, (bH * 0.95) / 2 + 0.14, 0);
-            group.add(sideTrim);
+            const pillarCap = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), skyBlueMat);
+            pillarCap.position.set(px, bH * 0.9 + 0.30, 0);
+            group.add(pillarCap);
         });
 
-        // 5. Entrance Doorway with Overhang Canopy
-        const doorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.90, 0.15), darkTrimMat);
-        doorFrame.position.set(0, 0.58, -bD / 2 - 0.06);
-        group.add(doorFrame);
+        // 3. Side Curved Cradle Arms holding the dial
+        const cradleGeo = new THREE.TorusGeometry(bW * 0.46, 0.08, 10, 20, Math.PI);
+        const cradle = new THREE.Mesh(cradleGeo, skyBlueMat);
+        cradle.rotation.z = Math.PI;
+        cradle.position.set(0, bH * 0.58, 0);
+        group.add(cradle);
 
-        const doorInner = new THREE.Mesh(new THREE.PlaneGeometry(0.64, 0.76), doorInnerMat);
-        doorInner.position.set(0, 0.50, -bD / 2 - 0.14);
-        doorInner.rotation.y = Math.PI;
-        group.add(doorInner);
+        // 4. Circular Speedometer Dial Backplate & Bezel (Đồng hồ đo tốc độ lớn)
+        const dialRadius = bW * 0.44;
+        const bezelGeo = new THREE.CylinderGeometry(dialRadius * 1.06, dialRadius * 1.06, 0.16, 32);
+        bezelGeo.rotateX(Math.PI / 2);
+        const bezel = new THREE.Mesh(bezelGeo, darkBlueMat);
+        bezel.position.set(0, bH * 0.62, 0.05);
+        bezel.castShadow = true;
+        group.add(bezel);
 
-        const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.22, 0.28), darkTrimMat);
-        canopy.position.set(0, 0.98, -bD / 2 - 0.12);
-        group.add(canopy);
+        // Dial Face Canvas Texture (Clockwork tick marks & ivory background)
+        const dialCanvas = document.createElement('canvas');
+        dialCanvas.width = 256;
+        dialCanvas.height = 256;
+        const dCtx = dialCanvas.getContext('2d');
 
-        // Little red emblem/crest on door canopy
-        const canopyCrest = new THREE.Mesh(new THREE.SphereGeometry(0.10, 8, 8), redMainMat);
-        canopyCrest.position.set(0, 0.98, -bD / 2 - 0.26);
-        group.add(canopyCrest);
+        // Ivory white background
+        dCtx.fillStyle = '#fef9c3';
+        dCtx.beginPath();
+        dCtx.arc(128, 128, 120, 0, Math.PI * 2);
+        dCtx.fill();
 
-        // Small square dark windows on bottom sides
-        [-bW * 0.36, bW * 0.36].forEach(wx => {
-            const win = new THREE.Mesh(new THREE.PlaneGeometry(0.28, 0.28), doorInnerMat);
-            win.position.set(wx, 0.85, -bD / 2 - 0.02);
-            win.rotation.y = Math.PI;
-            group.add(win);
+        // Navy Outer Border
+        dCtx.lineWidth = 14;
+        dCtx.strokeStyle = '#1e293b';
+        dCtx.stroke();
+
+        // Speedometer tick marks around the gauge
+        dCtx.strokeStyle = '#0f172a';
+        dCtx.lineWidth = 6;
+        for (let a = 0; a < 12; a++) {
+            const angle = (a / 12) * Math.PI * 2;
+            const x1 = 128 + Math.cos(angle) * 105;
+            const y1 = 128 + Math.sin(angle) * 105;
+            const x2 = 128 + Math.cos(angle) * (a % 3 === 0 ? 82 : 92);
+            const y2 = 128 + Math.sin(angle) * (a % 3 === 0 ? 82 : 92);
+            dCtx.beginPath();
+            dCtx.moveTo(x1, y1);
+            dCtx.lineTo(x2, y2);
+            dCtx.stroke();
+        }
+
+        const dialTex = new THREE.CanvasTexture(dialCanvas);
+        const dialFaceGeo = new THREE.CircleGeometry(dialRadius, 32);
+        const dialFace = new THREE.Mesh(dialFaceGeo, new THREE.MeshStandardMaterial({ map: dialTex, roughness: 0.3 }));
+        dialFace.position.set(0, bH * 0.62, -0.06);
+        dialFace.rotation.y = Math.PI;
+        group.add(dialFace);
+
+        // Center Dial Needle Pivot & Red Pointer (Kim đo tốc độ màu đỏ)
+        const needlePivot = new THREE.Group();
+        needlePivot.position.set(0, bH * 0.62, -0.08);
+
+        const needleGeo = new THREE.ConeGeometry(0.09, dialRadius * 0.82, 8);
+        needleGeo.rotateZ(Math.PI / 2);
+        needleGeo.translate(-dialRadius * 0.38, 0, 0);
+        const needleMesh = new THREE.Mesh(needleGeo, brightRedMat);
+        needlePivot.add(needleMesh);
+
+        const centerCap = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.08, 16), darkBlueMat);
+        centerCap.rotateX(Math.PI / 2);
+        needlePivot.add(centerCap);
+        group.add(needlePivot);
+
+        // 5. Training Dummy Figure standing on a pedestal in front (Hình nộm võ sĩ đứng trước đồng hồ)
+        const dummyPedestal = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.44, 0.28, 16), skyBlueMat);
+        dummyPedestal.position.set(0, 0.38, -0.22);
+        group.add(dummyPedestal);
+
+        // Gold studs on pedestal
+        for (let i = 0; i < 6; i++) {
+            const angle = (i / 6) * Math.PI * 2;
+            const stud = new THREE.Mesh(new THREE.SphereGeometry(0.04, 6, 6), goldMat);
+            stud.position.set(Math.cos(angle) * 0.41, 0.40, -0.22 + Math.sin(angle) * 0.41);
+            group.add(stud);
+        }
+
+        const dummyGroup = new THREE.Group();
+        dummyGroup.position.set(0, 0.52, -0.22);
+
+        // Dummy Legs
+        [-0.10, 0.10].forEach(lx => {
+            const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.36, 8), dummySkinMat);
+            leg.position.set(lx, 0.18, 0);
+            dummyGroup.add(leg);
         });
 
-        // 6. Wooden Flagpole & Bright Red Flag on Top
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.4), woodPoleMat);
-        pole.position.set(0, bH + 0.65, 0);
-        group.add(pole);
+        // Dummy Shorts
+        const shorts = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.16, 0.24), dummyPantsMat);
+        shorts.position.y = 0.38;
+        dummyGroup.add(shorts);
 
-        const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.42), brightRedFlagMat);
-        flag.position.set(0.38, bH + 1.05, 0);
-        group.add(flag);
+        // Dummy Torso
+        const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.15, 0.45, 12), dummySkinMat);
+        torso.position.y = 0.65;
+        dummyGroup.add(torso);
 
-        // 7. Framed High-Contrast Rectangular Display Screen (for HP Number)
-        const canvas = document.createElement('canvas');
-        canvas.width = 380;
-        canvas.height = 200;
-        const ctx = canvas.getContext('2d');
+        // Dummy Head
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.20, 12, 12), dummySkinMat);
+        head.position.y = 0.98;
+        dummyGroup.add(head);
+
+        // Dummy Red Boxing Sticks/Grips in hands
+        [-0.26, 0.26].forEach((ax, idx) => {
+            const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.35, 8), dummySkinMat);
+            arm.position.set(ax, 0.62, 0.05);
+            arm.rotation.z = (idx === 0 ? 0.35 : -0.35);
+            dummyGroup.add(arm);
+
+            const bat = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.55, 8), brightRedMat);
+            bat.position.set(ax * 1.25, 0.45, -0.15);
+            bat.rotation.x = -0.4;
+            bat.rotation.z = (idx === 0 ? -0.3 : 0.3);
+            dummyGroup.add(bat);
+        });
+
+        group.add(dummyGroup);
+
+        // 6. Single Clean Health Bar Banner on Top (Thanh máu duy nhất ở phía trên đỉnh)
+        const hpCanvas = document.createElement('canvas');
+        hpCanvas.width = 380;
+        hpCanvas.height = 90;
+        const hpCtx = hpCanvas.getContext('2d');
 
         const updateHpLabel = (hp) => {
-            ctx.clearRect(0, 0, 380, 200);
+            hpCtx.clearRect(0, 0, 380, 90);
 
-            // Screen dark burgundy background
-            ctx.fillStyle = '#8b2e2b';
-            this.roundRect(ctx, 8, 8, 364, 184, 18, true, false);
+            const maxHp = config.maxHp || 50;
+            const hpRatio = THREE.MathUtils.clamp(hp / maxHp, 0, 1);
 
-            // Screen dark frame border
-            ctx.lineWidth = 14;
-            ctx.strokeStyle = '#2b0909';
-            this.roundRect(ctx, 8, 8, 364, 184, 18, false, true);
+            // Dark rounded container frame
+            hpCtx.fillStyle = '#0f172a';
+            this.roundRect(hpCtx, 4, 4, 372, 82, 24, true, false);
 
-            // White crisp bold number with thick navy/black shadow outline
-            ctx.font = '900 130px "Arial Black", Impact, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.lineWidth = 26;
-            ctx.strokeStyle = '#0f172a';
-            ctx.lineJoin = 'round';
-            ctx.strokeText(`${Math.max(0, Math.ceil(hp))}`, 190, 100);
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(`${Math.max(0, Math.ceil(hp))}`, 190, 100);
+            // Background empty bar track
+            hpCtx.fillStyle = '#334155';
+            this.roundRect(hpCtx, 8, 8, 364, 74, 20, true, false);
+
+            // Active gradient health fill (Red -> Orange -> Green)
+            if (hpRatio > 0) {
+                const barFillWidth = Math.max(28, 364 * hpRatio);
+                const grad = hpCtx.createLinearGradient(8, 0, 372, 0);
+                grad.addColorStop(0, '#ef4444');
+                grad.addColorStop(0.5, '#f59e0b');
+                grad.addColorStop(1, '#22c55e');
+                hpCtx.fillStyle = grad;
+                this.roundRect(hpCtx, 8, 8, barFillWidth, 74, 20, true, false);
+            }
+
+            // Crisp bold HP Number centered directly on the health bar
+            hpCtx.font = '900 48px "Arial Black", Impact, sans-serif';
+            hpCtx.fillStyle = '#ffffff';
+            hpCtx.textAlign = 'center';
+            hpCtx.textBaseline = 'middle';
+            hpCtx.lineWidth = 10;
+            hpCtx.strokeStyle = '#0f172a';
+            hpCtx.strokeText(`${Math.max(0, Math.ceil(hp))}`, 190, 46);
+            hpCtx.fillText(`${Math.max(0, Math.ceil(hp))}`, 190, 46);
+
+            // Needle angle animates with remaining HP percentage
+            needlePivot.rotation.z = -Math.PI * 0.4 + (1 - hpRatio) * Math.PI * 0.8;
         };
         updateHpLabel(config.hp);
 
-        const hpTex = new THREE.CanvasTexture(canvas);
+        const hpTex = new THREE.CanvasTexture(hpCanvas);
         hpTex.needsUpdate = true;
 
-        const hpScreen = new THREE.Mesh(
-            new THREE.PlaneGeometry(bW * 0.88, 0.90),
+        const hpBarMesh = new THREE.Mesh(
+            new THREE.PlaneGeometry(2.2, 0.55),
             new THREE.MeshBasicMaterial({ map: hpTex, transparent: true, side: THREE.FrontSide })
         );
-        // Positioned neatly in the upper floor of the bunker front face
-        hpScreen.position.set(0, bH * 0.65 + 0.15, -bD / 2 - 0.05);
-        hpScreen.rotation.set(0, Math.PI, 0);
-        group.add(hpScreen);
+        hpBarMesh.position.set(0, bH + 0.45, -0.08);
+        hpBarMesh.rotation.set(0, Math.PI, 0);
+        group.add(hpBarMesh);
 
         this.scene.add(group);
 
         const barracksObj = {
             id: config.id,
             group: group,
+            needlePivot: needlePivot,
+            dummyGroup: dummyGroup,
             x: config.x,
             z: config.z,
-            width: config.width,
-            depth: config.depth,
+            width: bW,
+            depth: bD,
             hp: config.hp,
             maxHp: config.maxHp,
             spawnInterval: config.spawnInterval,
@@ -823,14 +1103,21 @@ export class Game3D {
                 updateHpLabel(barracksObj.hp);
                 hpTex.needsUpdate = true;
 
-                // Punch scale effect on hit
-                group.scale.set(1.1, 0.92, 1.1);
+                // Wiggle dummy and dial on hit
+                dummyGroup.rotation.y = (Math.random() - 0.5) * 0.4;
+                dummyGroup.position.y = 0.52 + Math.random() * 0.08;
+                group.scale.set(1.08, 0.94, 1.08);
                 setTimeout(() => {
                     if (group) group.scale.set(1.0, 1.0, 1.0);
+                    if (dummyGroup) {
+                        dummyGroup.rotation.y = 0;
+                        dummyGroup.position.y = 0.52;
+                    }
                 }, 80);
             },
             onDestroy: () => {
-                this.spawnDebrisExplosion(group.position, 0xdc2626, 20);
+                this.spawnDebrisExplosion(group.position, 0x93c5fd, 22);
+                this.spawnDebrisExplosion(group.position.clone().add(new THREE.Vector3(0, 1, 0)), 0xef4444, 15);
                 group.visible = false;
             }
         };
@@ -1143,6 +1430,7 @@ export class Game3D {
         const targetLookZ = this.cannonZ + this.targetCameraLookZ;
         this.camera.position.z += (targetCamZ - this.camera.position.z) * 5 * delta;
         this.camera.position.y += (targetCamY - this.camera.position.y) * 5 * delta;
+        this.camera.position.x += (0 - this.camera.position.x) * 5 * delta;
         this.camera.lookAt(0, 0, targetLookZ);
 
         this.updateDebrisAndParticles(delta);
