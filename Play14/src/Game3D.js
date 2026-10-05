@@ -87,9 +87,9 @@ export class Game3D {
 
     initThree() {
         this.scene = new THREE.Scene();
-        // Warm sand beige background & fog matching the reference screenshot exactly
-        this.scene.background = new THREE.Color(0xd6c2a4);
-        this.scene.fog = new THREE.Fog(0xd6c2a4, 60, 150);
+        // Bright, clean sunny cream-beige background & fog matching the reference screenshot
+        this.scene.background = new THREE.Color(0xece4d4);
+        this.scene.fog = new THREE.Fog(0xece4d4, 65, 160);
 
         this.camera = new THREE.PerspectiveCamera(48, this.width / this.height, 0.1, 250);
         this.camera.position.set(0, 21, -16);
@@ -100,7 +100,6 @@ export class Game3D {
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        this.renderer.outputEncoding = THREE.sRGBEncoding;
 
         this.renderer.domElement.style.position = 'absolute';
         this.renderer.domElement.style.top = '0';
@@ -110,14 +109,14 @@ export class Game3D {
         this.renderer.domElement.style.zIndex = '1';
         this.container.appendChild(this.renderer.domElement);
 
-        // Calibrated vibrant, high-contrast direct and ambient lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+        // Bright, vivid daylight lighting
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
         this.scene.add(ambientLight);
 
-        const hemiLight = new THREE.HemisphereLight(0xfffaed, 0x94826b, 0.35);
+        const hemiLight = new THREE.HemisphereLight(0xfffdf5, 0xb8caa4, 0.45);
         this.scene.add(hemiLight);
 
-        this.dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
+        this.dirLight = new THREE.DirectionalLight(0xffffff, 1.15);
         this.dirLight.position.set(-14, 32, -10);
         this.dirLight.castShadow = true;
         this.dirLight.shadow.mapSize.width = 1024;
@@ -138,7 +137,7 @@ export class Game3D {
         canvas.width = 128;
         canvas.height = 128;
         const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#d6c2a4';
+        ctx.fillStyle = '#ece4d4';
         ctx.fillRect(0, 0, 128, 128);
         const grassTex = new THREE.CanvasTexture(canvas);
 
@@ -154,18 +153,18 @@ export class Game3D {
         this.trackGroup = new THREE.Group();
         const roadLength = 155;
 
-        // 1. Alternating Lawn Stripes Texture (Làn sọc xanh tươi sáng & đậm nét chuẩn ảnh mẫu)
+        // 1. Alternating Lawn Stripes Texture (Làn sọc xanh tươi sáng & rực rỡ chuẩn ảnh mẫu)
         const trackCanvas = document.createElement('canvas');
         trackCanvas.width = 128;
         trackCanvas.height = 256;
         const tCtx = trackCanvas.getContext('2d');
 
-        // Stripe 1: Fresh Bright Lawn Mint Green (Làn xanh nhạt)
-        tCtx.fillStyle = '#bcf0b5';
+        // Stripe 1: Bright Fresh Mint Green (Làn xanh tươi sáng)
+        tCtx.fillStyle = '#bbf2b6';
         tCtx.fillRect(0, 0, 128, 128);
 
-        // Stripe 2: Rich Meadow Grass Green (Làn xanh đậm)
-        tCtx.fillStyle = '#56a760';
+        // Stripe 2: Vibrant Meadow Grass Green (Làn xanh cỏ rực rỡ)
+        tCtx.fillStyle = '#4eaa58';
         tCtx.fillRect(0, 128, 128, 128);
 
         const trackTex = new THREE.CanvasTexture(trackCanvas);
@@ -175,7 +174,7 @@ export class Game3D {
 
         const roadMat = new THREE.MeshStandardMaterial({
             map: trackTex,
-            roughness: 0.6,
+            roughness: 0.55,
             metalness: 0.05
         });
         const roadGeo = new THREE.BoxGeometry(7.6, 0.6, roadLength);
