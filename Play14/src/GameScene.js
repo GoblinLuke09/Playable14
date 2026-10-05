@@ -53,6 +53,7 @@ export class GameScene extends Phaser.Scene {
         this.squadCount = 1;
         this.gameStarted = false;
         this.isComplete = false;
+        this.hasTriggeredStore = false;
 
         window.showStore = () => this.ShowStore();
         window.ShowStore = () => this.ShowStore();
@@ -482,10 +483,13 @@ export class GameScene extends Phaser.Scene {
         if (this.hasTriggeredStore) return;
         this.hasTriggeredStore = true;
 
-        if (typeof window.gameEnd === 'function') {
-                    window.gameEnd();
-                }
+        if (this.game3d) {
+            this.game3d.isGameActive = false;
+        }
 
+        if (typeof window.gameEnd === 'function') {
+            window.gameEnd();
+        }
 
         const storeUrl = "https://play.google.com/store/apps/details?id=com.bf14.epic.run.survivor.game";
         console.log("Playturbo: ShowStore triggered (CTA Click)");
