@@ -54,6 +54,7 @@ export class GameScene extends Phaser.Scene {
         this.squadCount = 1;
         this.gameStarted = false;
         this.isComplete = false;
+        this.hasTriggeredStore = false;
 
         this.initWebAudioSynth();
 
@@ -227,6 +228,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     startGame() {
+        if (this.gameStarted) return;
         this.gameStarted = true;
         if (this.tutorialGroup) {
             this.tweens.add({
@@ -240,6 +242,13 @@ export class GameScene extends Phaser.Scene {
         if (typeof window.gameStart === 'function') {
             window.gameStart();
         }
+
+        // Tự động show store sau 8s chơi (chỉ kích hoạt 1 lần duy nhất)
+        this.time.delayedCall(8000, () => {
+            if (!this.hasTriggeredStore) {
+                this.ShowStore();
+            }
+        });
     }
 
     handleShoot() {
@@ -444,12 +453,22 @@ export class GameScene extends Phaser.Scene {
         if (this.hasTriggeredStore) return;
         this.hasTriggeredStore = true;
 
+        if (this.game3d) {
+            this.game3d.isGameActive = false;
+            this.game3d.isLevelFinished = true;
+        }
+
+        if (!this.isComplete) {
+            this.isComplete = true;
+            this.showVictoryEndCard();
+        }
+
         if (typeof window.gameEnd === 'function') {
-                    window.gameEnd();
-                }
+            window.gameEnd();
+        }
 
         const storeUrl = "https://play.google.com/store/apps/details?id=com.bf14.epic.run.survivor.game";
-        console.log("Playturbo: ShowStore triggered (CTA Click)");
+        console.log("Playturbo: ShowStore triggered (8s Auto-CTA / Store)");
 
         if (typeof window.install === 'function') {
             window.install();
