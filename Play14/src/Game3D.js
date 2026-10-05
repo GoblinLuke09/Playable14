@@ -85,10 +85,30 @@ export class Game3D {
 
     initThree() {
         this.scene = new THREE.Scene();
-        // Bright, fresh pastel pink background
-        const bgColor = 0xffe4ec;
-        this.scene.background = new THREE.Color(bgColor);
-        this.scene.fog = new THREE.Fog(bgColor, 75, 200);
+
+        // Continuous full-screen vertical gradient background:
+        // Soft creamy pale pink at bottom -> Smoothly transitioning to gentle pastel pink at top
+        const bgCanvas = document.createElement('canvas');
+        bgCanvas.width = 16;
+        bgCanvas.height = 512;
+        const bgCtx = bgCanvas.getContext('2d');
+        const bgGrad = bgCtx.createLinearGradient(0, 0, 0, 512);
+        // Top (y=0): Gentle pastel rosy pink (matching ref)
+        bgGrad.addColorStop(0.0, '#f5b8c7');
+        // Upper Mid:
+        bgGrad.addColorStop(0.30, '#fad1dc');
+        // Center:
+        bgGrad.addColorStop(0.55, '#fce1e8');
+        // Lower Mid:
+        bgGrad.addColorStop(0.80, '#fdedf3');
+        // Bottom (y=512): Light soft creamy pale pink
+        bgGrad.addColorStop(1.0, '#fef7fa');
+        bgCtx.fillStyle = bgGrad;
+        bgCtx.fillRect(0, 0, 16, 512);
+
+        const bgTexture = new THREE.CanvasTexture(bgCanvas);
+        bgTexture.colorSpace = THREE.SRGBColorSpace;
+        this.scene.background = bgTexture;
 
         this.camera = new THREE.PerspectiveCamera(54, this.width / this.height, 0.1, 350);
         this.camera.position.set(0, 14.5, this.cannonZ - 14.5);
@@ -100,7 +120,7 @@ export class Game3D {
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.13;
+        this.renderer.toneMappingExposure = 1.08;
 
         this.renderer.domElement.style.position = 'absolute';
         this.renderer.domElement.style.top = '0';
@@ -110,14 +130,14 @@ export class Game3D {
         this.renderer.domElement.style.zIndex = '1';
         this.container.appendChild(this.renderer.domElement);
 
-        // Balanced ambient and hemisphere fill lighting (sweet spot)
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.82);
+        // Soft, balanced lighting matching reference screenshot
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
         this.scene.add(ambientLight);
 
-        const hemiLight = new THREE.HemisphereLight(0xfff8fa, 0xfce7f3, 0.42);
+        const hemiLight = new THREE.HemisphereLight(0xffe4ec, 0xfce7f3, 0.40);
         this.scene.add(hemiLight);
 
-        this.dirLight = new THREE.DirectionalLight(0xffffff, 0.86);
+        this.dirLight = new THREE.DirectionalLight(0xfff8fa, 0.85);
         this.dirLight.position.set(-10, 38, -12);
         this.dirLight.castShadow = true;
         this.dirLight.shadow.mapSize.width = 1024;
@@ -133,41 +153,34 @@ export class Game3D {
     }
 
     createEnvironment() {
-        // Pastel pink ground extending into the horizon
-        const groundGeo = new THREE.PlaneGeometry(260, 400);
-        const groundMat = new THREE.MeshLambertMaterial({ color: 0xffe4ec });
-        const ground = new THREE.Mesh(groundGeo, groundMat);
-        ground.rotation.x = -Math.PI / 2;
-        ground.position.set(0, -0.22, 90);
-        ground.receiveShadow = true;
-        this.scene.add(ground);
+        // No flat ground mesh to prevent horizontal line cutoffs
     }
 
     createTrack() {
         this.trackGroup = new THREE.Group();
         const roadLength = 180;
 
-        // 1. MAIN RUNWAY: Alternating horizontal blocks (Soft White & Gentle Pastel Lavender)
+        // 1. MAIN RUNWAY: Alternating horizontal blocks (Milky White & Soft Pastel Lavender)
         const canvasMain = document.createElement('canvas');
         canvasMain.width = 256;
         canvasMain.height = 512;
         const ctxMain = canvasMain.getContext('2d');
-        // Block 1: Soft White
-        ctxMain.fillStyle = '#f8fafc';
+        // Block 1: Milky Soft White
+        ctxMain.fillStyle = '#f4f3f8';
         ctxMain.fillRect(0, 0, 256, 256);
-        // Block 2: Gentle Pastel Lavender (#e6e0f4)
-        ctxMain.fillStyle = '#e6e0f4';
+        // Block 2: Distinct Soft Pastel Lavender (#d2c4e6)
+        ctxMain.fillStyle = '#d2c4e6';
         ctxMain.fillRect(0, 256, 256, 256);
 
         const mainRoadTex = new THREE.CanvasTexture(canvasMain);
         mainRoadTex.colorSpace = THREE.SRGBColorSpace;
         mainRoadTex.wrapS = THREE.RepeatWrapping;
         mainRoadTex.wrapT = THREE.RepeatWrapping;
-        mainRoadTex.repeat.set(1, 40);
+        mainRoadTex.repeat.set(1, 38);
 
         const mainRoadMat = new THREE.MeshStandardMaterial({
             map: mainRoadTex,
-            roughness: 0.52,
+            roughness: 0.50,
             metalness: 0.0
         });
         const mainRoadWidth = 7.2;
@@ -177,20 +190,20 @@ export class Game3D {
         mainRoadMesh.receiveShadow = true;
         this.trackGroup.add(mainRoadMesh);
 
-        // 2. Bright Golden Wood Curbs along both edges (X = +3.6 and X = -3.6)
-        const curbMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3, metalness: 0.15 });
+        // 2. Soft Vibrant Purple Edge Rails / Curbs (matching reference image)
+        const curbMat = new THREE.MeshStandardMaterial({ color: 0x9844db, roughness: 0.35, metalness: 0.1 });
         [3.6, -3.6].forEach(cx => {
-            const curb = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.48, roadLength), curbMat);
-            curb.position.set(cx, -0.16, roadLength / 2 - 10);
+            const curb = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.46, roadLength), curbMat);
+            curb.position.set(cx, -0.17, roadLength / 2 - 10);
             curb.castShadow = true;
             this.trackGroup.add(curb);
         });
 
-        // 3. POINTED GOLDEN WOODEN PICKET FENCES on outer edges (Screen Left at +3.6, Screen Right at -3.6)
+        // 3. WARM GOLDEN AMBER WOODEN PICKET FENCES on outer edges (Screen Left at +3.6, Screen Right at -3.6)
         const fenceGoldMat = new THREE.MeshStandardMaterial({
-            color: 0xfbbf24,
-            roughness: 0.25,
-            metalness: 0.20
+            color: 0xe5a828,
+            roughness: 0.35,
+            metalness: 0.10
         });
 
         // Create Pointed Picket Shape (Classical stylized wooden fence)
@@ -250,14 +263,14 @@ export class Game3D {
     buildCannonModel(tier, isShowcase = false) {
         const root = new THREE.Group();
 
-        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.25, metalness: 0.2 });
-        const cyanBrightMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2, metalness: 0.3 });
-        const darkMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5, metalness: 0.3 });
-        const wheelMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.8 });
+        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x0369a1, roughness: 0.25, metalness: 0.2 });
+        const cyanBrightMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.2, metalness: 0.3 });
+        const darkMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.3 });
+        const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
         const hubMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.2 });
-        const yellowGoldMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.2, metalness: 0.4 });
-        const redTubeMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3, metalness: 0.1 });
-        const purpleMat = new THREE.MeshStandardMaterial({ color: 0xa855f7, roughness: 0.2, metalness: 0.5 });
+        const yellowGoldMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.2, metalness: 0.4 });
+        const redTubeMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3, metalness: 0.1 });
+        const purpleMat = new THREE.MeshStandardMaterial({ color: 0x9333ea, roughness: 0.2, metalness: 0.5 });
         const flashMat = new THREE.MeshBasicMaterial({ color: 0x67e8f9, transparent: true, opacity: 0 });
 
         const wheels = [];
@@ -1106,7 +1119,7 @@ export class Game3D {
         canvasBrick.height = 512;
         const bCtx = canvasBrick.getContext('2d');
 
-        bCtx.fillStyle = '#52525b';
+        bCtx.fillStyle = '#3f3f46';
         bCtx.fillRect(0, 0, 512, 512);
 
         const cols = 8;
@@ -1124,7 +1137,7 @@ export class Game3D {
                 bCtx.fillRect(x + 1, y + 1, cellW - 2, cellH - 2);
 
                 // Bevel border highlight
-                bCtx.strokeStyle = '#6b7280';
+                bCtx.strokeStyle = '#64748b';
                 bCtx.lineWidth = 1.5;
                 bCtx.strokeRect(x + 2, y + 2, cellW - 4, cellH - 4);
 
@@ -1134,7 +1147,7 @@ export class Game3D {
                 const dw = cellW * 0.28;
                 const dh = cellH * 0.28;
 
-                bCtx.fillStyle = '#78716c';
+                bCtx.fillStyle = '#d97706';
                 bCtx.beginPath();
                 bCtx.moveTo(cx, cy - dh);
                 bCtx.lineTo(cx + dw, cy);
@@ -1143,7 +1156,7 @@ export class Game3D {
                 bCtx.closePath();
                 bCtx.fill();
 
-                bCtx.strokeStyle = '#374151';
+                bCtx.strokeStyle = '#1e293b';
                 bCtx.lineWidth = 1;
                 bCtx.stroke();
             }
@@ -1165,12 +1178,12 @@ export class Game3D {
         canvasGold.width = 256;
         canvasGold.height = 64;
         const gCtx = canvasGold.getContext('2d');
-        gCtx.fillStyle = '#f59e0b';
+        gCtx.fillStyle = '#d97706';
         gCtx.fillRect(0, 0, 256, 64);
         for (let x = 0; x < 256; x += 32) {
-            gCtx.fillStyle = '#fbbf24';
+            gCtx.fillStyle = '#f59e0b';
             gCtx.fillRect(x + 2, 2, 28, 60);
-            gCtx.fillStyle = '#fef08a';
+            gCtx.fillStyle = '#fde047';
             gCtx.beginPath();
             const cx = x + 16;
             const cy = 32;
@@ -1187,7 +1200,7 @@ export class Game3D {
         goldTex.repeat.set(2, 1);
         const goldMat = new THREE.MeshStandardMaterial({ map: goldTex, roughness: 0.35, metalness: 0.3 });
 
-        const brownTopMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.6 });
+        const brownTopMat = new THREE.MeshStandardMaterial({ color: 0x7c2d12, roughness: 0.6 });
 
         // 3. Build Multi-Piece Seamless Cylindrical Rows (Multiple small pieces per row)
         const numRows = Math.max(4, Math.min(6, Math.ceil(config.hp / 6)));
@@ -1384,12 +1397,12 @@ export class Game3D {
         const isLocked = (config.level || 1) > 1;
 
         // Colors matching reference image
-        const cyanMat = new THREE.MeshStandardMaterial({ color: 0x81d4fa, roughness: 0.35, metalness: 0.1 });
-        const darkNavyMat = new THREE.MeshStandardMaterial({ color: 0x1e3a5f, roughness: 0.4, metalness: 0.2 });
-        const tanSkinMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.45 });
-        const blueShortsMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.4 });
-        const redClubMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 });
-        const goldRivetMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.25, metalness: 0.3 });
+        const cyanMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.35, metalness: 0.1 });
+        const darkNavyMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4, metalness: 0.2 });
+        const tanSkinMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.45 });
+        const blueShortsMat = new THREE.MeshStandardMaterial({ color: 0x0369a1, roughness: 0.4 });
+        const redClubMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3 });
+        const goldRivetMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.25, metalness: 0.3 });
 
         // 1. ROUNDED CYAN PODIUM STAGE (Base)
         const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.42, 1.48, 0.30, 32), cyanMat);
