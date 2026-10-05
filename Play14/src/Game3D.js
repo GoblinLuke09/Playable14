@@ -85,10 +85,10 @@ export class Game3D {
 
     initThree() {
         this.scene = new THREE.Scene();
-        // Soft pastel pink background matching reference exactly
-        const bgColor = 0xffd2dc;
+        // Bright, fresh pastel pink background
+        const bgColor = 0xffe4ec;
         this.scene.background = new THREE.Color(bgColor);
-        this.scene.fog = new THREE.Fog(bgColor, 55, 160);
+        this.scene.fog = new THREE.Fog(bgColor, 75, 200);
 
         this.camera = new THREE.PerspectiveCamera(54, this.width / this.height, 0.1, 350);
         this.camera.position.set(0, 14.5, this.cannonZ - 14.5);
@@ -100,7 +100,7 @@ export class Game3D {
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.0;
+        this.renderer.toneMappingExposure = 1.13;
 
         this.renderer.domElement.style.position = 'absolute';
         this.renderer.domElement.style.top = '0';
@@ -110,14 +110,15 @@ export class Game3D {
         this.renderer.domElement.style.zIndex = '1';
         this.container.appendChild(this.renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.70);
+        // Balanced ambient and hemisphere fill lighting (sweet spot)
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.82);
         this.scene.add(ambientLight);
 
-        const hemiLight = new THREE.HemisphereLight(0xfff0f4, 0xfce7f3, 0.35);
+        const hemiLight = new THREE.HemisphereLight(0xfff8fa, 0xfce7f3, 0.42);
         this.scene.add(hemiLight);
 
-        this.dirLight = new THREE.DirectionalLight(0xfffaed, 0.55);
-        this.dirLight.position.set(-12, 30, -10);
+        this.dirLight = new THREE.DirectionalLight(0xffffff, 0.86);
+        this.dirLight.position.set(-10, 38, -12);
         this.dirLight.castShadow = true;
         this.dirLight.shadow.mapSize.width = 1024;
         this.dirLight.shadow.mapSize.height = 1024;
@@ -132,9 +133,9 @@ export class Game3D {
     }
 
     createEnvironment() {
-        // Soft pastel pink ground extending into the infinite horizon
+        // Pastel pink ground extending into the horizon
         const groundGeo = new THREE.PlaneGeometry(260, 400);
-        const groundMat = new THREE.MeshLambertMaterial({ color: 0xffd2dc });
+        const groundMat = new THREE.MeshLambertMaterial({ color: 0xffe4ec });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.rotation.x = -Math.PI / 2;
         ground.position.set(0, -0.22, 90);
@@ -146,16 +147,16 @@ export class Game3D {
         this.trackGroup = new THREE.Group();
         const roadLength = 180;
 
-        // 1. MAIN RUNWAY: Clean alternating horizontal blocks (Pure Crisp White & Soft Pastel Lavender)
+        // 1. MAIN RUNWAY: Alternating horizontal blocks (Soft White & Gentle Pastel Lavender)
         const canvasMain = document.createElement('canvas');
         canvasMain.width = 256;
         canvasMain.height = 512;
         const ctxMain = canvasMain.getContext('2d');
-        // Block 1: Crisp Pure White
-        ctxMain.fillStyle = '#ffffff';
+        // Block 1: Soft White
+        ctxMain.fillStyle = '#f8fafc';
         ctxMain.fillRect(0, 0, 256, 256);
-        // Block 2: Soft Clean Pastel Lavender / Grey (#dedbf0)
-        ctxMain.fillStyle = '#dedbf0';
+        // Block 2: Gentle Pastel Lavender (#e6e0f4)
+        ctxMain.fillStyle = '#e6e0f4';
         ctxMain.fillRect(0, 256, 256, 256);
 
         const mainRoadTex = new THREE.CanvasTexture(canvasMain);
@@ -166,7 +167,7 @@ export class Game3D {
 
         const mainRoadMat = new THREE.MeshStandardMaterial({
             map: mainRoadTex,
-            roughness: 0.90,
+            roughness: 0.52,
             metalness: 0.0
         });
         const mainRoadWidth = 7.2;
@@ -176,8 +177,8 @@ export class Game3D {
         mainRoadMesh.receiveShadow = true;
         this.trackGroup.add(mainRoadMesh);
 
-        // 2. Continuous Golden Wood Curbs along both edges (X = +3.6 and X = -3.6)
-        const curbMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.4, metalness: 0.1 });
+        // 2. Bright Golden Wood Curbs along both edges (X = +3.6 and X = -3.6)
+        const curbMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3, metalness: 0.15 });
         [3.6, -3.6].forEach(cx => {
             const curb = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.48, roadLength), curbMat);
             curb.position.set(cx, -0.16, roadLength / 2 - 10);
@@ -187,9 +188,9 @@ export class Game3D {
 
         // 3. POINTED GOLDEN WOODEN PICKET FENCES on outer edges (Screen Left at +3.6, Screen Right at -3.6)
         const fenceGoldMat = new THREE.MeshStandardMaterial({
-            color: 0xf59e0b,
-            roughness: 0.35,
-            metalness: 0.15
+            color: 0xfbbf24,
+            roughness: 0.25,
+            metalness: 0.20
         });
 
         // Create Pointed Picket Shape (Classical stylized wooden fence)
