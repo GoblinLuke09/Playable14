@@ -85,12 +85,14 @@ export class Game3D {
 
     initThree() {
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0xa7d898);
-        this.scene.fog = new THREE.Fog(0xa7d898, 65, 150);
+        // Soft pastel pink background matching reference exactly
+        const bgColor = 0xffd2dc;
+        this.scene.background = new THREE.Color(bgColor);
+        this.scene.fog = new THREE.Fog(bgColor, 55, 160);
 
-        this.camera = new THREE.PerspectiveCamera(50, this.width / this.height, 0.1, 350);
-        this.camera.position.set(0, 22, -18);
-        this.camera.lookAt(0, 0, 16);
+        this.camera = new THREE.PerspectiveCamera(54, this.width / this.height, 0.1, 350);
+        this.camera.position.set(0, 14.5, this.cannonZ - 14.5);
+        this.camera.lookAt(0, 1.2, this.cannonZ + 12.0);
 
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
         this.renderer.setSize(this.width, this.height);
@@ -98,7 +100,7 @@ export class Game3D {
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.15;
+        this.renderer.toneMappingExposure = 1.0;
 
         this.renderer.domElement.style.position = 'absolute';
         this.renderer.domElement.style.top = '0';
@@ -108,14 +110,14 @@ export class Game3D {
         this.renderer.domElement.style.zIndex = '1';
         this.container.appendChild(this.renderer.domElement);
 
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.95);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.70);
         this.scene.add(ambientLight);
 
-        const hemiLight = new THREE.HemisphereLight(0xfff7ed, 0x88bb66, 0.55);
+        const hemiLight = new THREE.HemisphereLight(0xfff0f4, 0xfce7f3, 0.35);
         this.scene.add(hemiLight);
 
-        this.dirLight = new THREE.DirectionalLight(0xfffaed, 1.4);
-        this.dirLight.position.set(-14, 35, -10);
+        this.dirLight = new THREE.DirectionalLight(0xfffaed, 0.55);
+        this.dirLight.position.set(-12, 30, -10);
         this.dirLight.castShadow = true;
         this.dirLight.shadow.mapSize.width = 1024;
         this.dirLight.shadow.mapSize.height = 1024;
@@ -130,26 +132,12 @@ export class Game3D {
     }
 
     createEnvironment() {
-        const groundGeo = new THREE.PlaneGeometry(160, 300);
-        const canvas = document.createElement('canvas');
-        canvas.width = 256;
-        canvas.height = 256;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#a1d893';
-        ctx.fillRect(0, 0, 256, 256);
-        ctx.fillStyle = '#94ce85';
-        for (let i = 0; i < 256; i += 32) {
-            ctx.fillRect(0, i, 256, 16);
-        }
-        const grassTex = new THREE.CanvasTexture(canvas);
-        grassTex.wrapS = THREE.RepeatWrapping;
-        grassTex.wrapT = THREE.RepeatWrapping;
-        grassTex.repeat.set(16, 30);
-
-        const groundMat = new THREE.MeshLambertMaterial({ map: grassTex });
+        // Soft pastel pink ground extending into the infinite horizon
+        const groundGeo = new THREE.PlaneGeometry(260, 400);
+        const groundMat = new THREE.MeshLambertMaterial({ color: 0xffd2dc });
         const ground = new THREE.Mesh(groundGeo, groundMat);
         ground.rotation.x = -Math.PI / 2;
-        ground.position.set(0, -0.08, 70);
+        ground.position.set(0, -0.22, 90);
         ground.receiveShadow = true;
         this.scene.add(ground);
     }
@@ -158,39 +146,99 @@ export class Game3D {
         this.trackGroup = new THREE.Group();
         const roadLength = 180;
 
-        const roadMat = new THREE.MeshStandardMaterial({
-            color: 0xb5bcc7,
-            roughness: 0.85,
-            metalness: 0.05
-        });
-        const roadGeo = new THREE.BoxGeometry(7.6, 0.6, roadLength);
-        const roadMesh = new THREE.Mesh(roadGeo, roadMat);
-        roadMesh.position.set(0, -0.3, roadLength / 2 - 10);
-        roadMesh.receiveShadow = true;
-        this.trackGroup.add(roadMesh);
+        // 1. MAIN RUNWAY: Clean alternating horizontal blocks (Pure Crisp White & Soft Pastel Lavender)
+        const canvasMain = document.createElement('canvas');
+        canvasMain.width = 256;
+        canvasMain.height = 512;
+        const ctxMain = canvasMain.getContext('2d');
+        // Block 1: Crisp Pure White
+        ctxMain.fillStyle = '#ffffff';
+        ctxMain.fillRect(0, 0, 256, 256);
+        // Block 2: Soft Clean Pastel Lavender / Grey (#dedbf0)
+        ctxMain.fillStyle = '#dedbf0';
+        ctxMain.fillRect(0, 256, 256, 256);
 
-        // Level 1 Starting Baseline at Z = 0
+        const mainRoadTex = new THREE.CanvasTexture(canvasMain);
+        mainRoadTex.colorSpace = THREE.SRGBColorSpace;
+        mainRoadTex.wrapS = THREE.RepeatWrapping;
+        mainRoadTex.wrapT = THREE.RepeatWrapping;
+        mainRoadTex.repeat.set(1, 40);
+
+        const mainRoadMat = new THREE.MeshStandardMaterial({
+            map: mainRoadTex,
+            roughness: 0.90,
+            metalness: 0.0
+        });
+        const mainRoadWidth = 7.2;
+        const mainRoadGeo = new THREE.BoxGeometry(mainRoadWidth, 0.40, roadLength);
+        const mainRoadMesh = new THREE.Mesh(mainRoadGeo, mainRoadMat);
+        mainRoadMesh.position.set(0, -0.20, roadLength / 2 - 10);
+        mainRoadMesh.receiveShadow = true;
+        this.trackGroup.add(mainRoadMesh);
+
+        // 2. Continuous Golden Wood Curbs along both edges (X = +3.6 and X = -3.6)
+        const curbMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.4, metalness: 0.1 });
+        [3.6, -3.6].forEach(cx => {
+            const curb = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.48, roadLength), curbMat);
+            curb.position.set(cx, -0.16, roadLength / 2 - 10);
+            curb.castShadow = true;
+            this.trackGroup.add(curb);
+        });
+
+        // 3. POINTED GOLDEN WOODEN PICKET FENCES on outer edges (Screen Left at +3.6, Screen Right at -3.6)
+        const fenceGoldMat = new THREE.MeshStandardMaterial({
+            color: 0xf59e0b,
+            roughness: 0.35,
+            metalness: 0.15
+        });
+
+        // Create Pointed Picket Shape (Classical stylized wooden fence)
+        const pw = 0.14;
+        const ph = 0.65;
+        const pth = 0.12;
+        const picketShape = new THREE.Shape();
+        picketShape.moveTo(-pw / 2, 0);
+        picketShape.lineTo(pw / 2, 0);
+        picketShape.lineTo(pw / 2, ph);
+        picketShape.lineTo(0, ph + pth); // pointed arrowhead tip
+        picketShape.lineTo(-pw / 2, ph);
+        picketShape.closePath();
+
+        const extrudeSettings = { depth: 0.04, bevelEnabled: false };
+        const picketGeo = new THREE.ExtrudeGeometry(picketShape, extrudeSettings);
+
+        [3.6, -3.6].forEach(fx => {
+            // Continuous top rail
+            const topRail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.10, roadLength), fenceGoldMat);
+            topRail.position.set(fx, 0.46, roadLength / 2 - 10);
+            this.trackGroup.add(topRail);
+
+            // Continuous bottom rail
+            const botRail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.08, roadLength), fenceGoldMat);
+            botRail.position.set(fx, 0.16, roadLength / 2 - 10);
+            this.trackGroup.add(botRail);
+
+            // Pointed pickets spaced every 0.38m along the road
+            for (let pz = -8; pz < roadLength - 10; pz += 0.38) {
+                const picket = new THREE.Mesh(picketGeo, fenceGoldMat);
+                picket.position.set(fx, 0.02, pz);
+                this.trackGroup.add(picket);
+            }
+        });
+
+        // 4. Level 1 Starting Baseline at Z = 0
         const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-        const lineGeo = new THREE.PlaneGeometry(7.2, 0.25);
+        const lineGeo = new THREE.PlaneGeometry(7.0, 0.25);
         const lineMesh = new THREE.Mesh(lineGeo, lineMat);
         lineMesh.rotation.x = -Math.PI / 2;
         lineMesh.position.set(0, 0.02, 0.0);
         this.trackGroup.add(lineMesh);
 
-        // Level 2 Starting Baseline at Z = 24.0
+        // 5. Level 2 Starting Baseline at Z = 24.0
         const line2Mesh = new THREE.Mesh(lineGeo, new THREE.MeshBasicMaterial({ color: 0xfacc15 }));
         line2Mesh.rotation.x = -Math.PI / 2;
         line2Mesh.position.set(0, 0.02, 24.0);
         this.trackGroup.add(line2Mesh);
-
-        const curbMat = new THREE.MeshLambertMaterial({ color: 0x8a93a0 });
-        [-3.85, 3.85].forEach(cx => {
-            const curbGeo = new THREE.BoxGeometry(0.2, 0.7, roadLength);
-            const curbMesh = new THREE.Mesh(curbGeo, curbMat);
-            curbMesh.position.set(cx, -0.25, roadLength / 2 - 10);
-            curbMesh.castShadow = true;
-            this.trackGroup.add(curbMesh);
-        });
 
         this.scene.add(this.trackGroup);
     }
@@ -870,8 +918,8 @@ export class Game3D {
             });
 
             // Camera smoothly glides forward directly behind cannon with identical framing to Level 1
-            this.camera.position.set(0, 22, this.cannonZ - 16.0);
-            this.camera.lookAt(0, 0, this.cannonZ + 18.0);
+            this.camera.position.set(0, 14.5, this.cannonZ - 14.5);
+            this.camera.lookAt(0, 1.2, this.cannonZ + 12.0);
 
             // Speed thruster sparks
             if (Math.random() < 0.75) {
@@ -901,8 +949,8 @@ export class Game3D {
         this.levelBaselineZ = 24.0;
 
         // Ensure camera framing is 100% matched to Level 1
-        this.camera.position.set(0, 22, this.cannonZ - 16.0);
-        this.camera.lookAt(0, 0, this.cannonZ + 18.0);
+        this.camera.position.set(0, 14.5, this.cannonZ - 14.5);
+        this.camera.lookAt(0, 1.2, this.cannonZ + 12.0);
 
         // Unlock Level 2 gates
         this.gates.forEach(g => {
@@ -1045,61 +1093,200 @@ export class Game3D {
 
     createYellowTierBlock(config) {
         const group = new THREE.Group();
-        group.position.set(config.x, config.height / 2, config.z);
+        group.position.set(config.x, 0, config.z);
 
         const isLocked = (config.level || 1) > 1;
+        const totalHeight = config.height || 1.8;
+        const radius = (config.width || 2.2) / 2;
 
-        const blockMat = new THREE.MeshStandardMaterial({
-            color: 0xfacc15,
-            roughness: 0.25,
-            metalness: 0.25
+        // 1. Generate Seamless Diamond-Engraved Stone Texture (matching Image 1)
+        const canvasBrick = document.createElement('canvas');
+        canvasBrick.width = 512;
+        canvasBrick.height = 512;
+        const bCtx = canvasBrick.getContext('2d');
+
+        bCtx.fillStyle = '#52525b';
+        bCtx.fillRect(0, 0, 512, 512);
+
+        const cols = 8;
+        const rows = 8;
+        const cellW = 512 / cols;
+        const cellH = 512 / rows;
+
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                const x = c * cellW;
+                const y = r * cellH;
+
+                // Dark stone tile
+                bCtx.fillStyle = '#4b5563';
+                bCtx.fillRect(x + 1, y + 1, cellW - 2, cellH - 2);
+
+                // Bevel border highlight
+                bCtx.strokeStyle = '#6b7280';
+                bCtx.lineWidth = 1.5;
+                bCtx.strokeRect(x + 2, y + 2, cellW - 4, cellH - 4);
+
+                // Center diamond engraving
+                const cx = x + cellW / 2;
+                const cy = y + cellH / 2;
+                const dw = cellW * 0.28;
+                const dh = cellH * 0.28;
+
+                bCtx.fillStyle = '#78716c';
+                bCtx.beginPath();
+                bCtx.moveTo(cx, cy - dh);
+                bCtx.lineTo(cx + dw, cy);
+                bCtx.lineTo(cx, cy + dh);
+                bCtx.lineTo(cx - dw, cy);
+                bCtx.closePath();
+                bCtx.fill();
+
+                bCtx.strokeStyle = '#374151';
+                bCtx.lineWidth = 1;
+                bCtx.stroke();
+            }
+        }
+
+        const stoneTex = new THREE.CanvasTexture(canvasBrick);
+        stoneTex.wrapS = THREE.RepeatWrapping;
+        stoneTex.wrapT = THREE.RepeatWrapping;
+        stoneTex.repeat.set(2, 1);
+
+        const cylinderMat = new THREE.MeshStandardMaterial({
+            map: stoneTex,
+            roughness: 0.50,
+            metalness: 0.15
         });
-        const blockGeo = new THREE.BoxGeometry(config.width, config.height, config.depth);
-        const blockMesh = new THREE.Mesh(blockGeo, blockMat);
-        blockMesh.castShadow = true;
-        blockMesh.receiveShadow = true;
-        group.add(blockMesh);
 
-        const ringMat = new THREE.MeshBasicMaterial({ color: 0xfff066, side: THREE.DoubleSide });
-        const topRing = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.75, 16), ringMat);
-        topRing.rotation.x = -Math.PI / 2;
-        topRing.position.y = config.height / 2 + 0.01;
-        group.add(topRing);
+        // 2. Generate Golden Core & Brown Top Textures
+        const canvasGold = document.createElement('canvas');
+        canvasGold.width = 256;
+        canvasGold.height = 64;
+        const gCtx = canvasGold.getContext('2d');
+        gCtx.fillStyle = '#f59e0b';
+        gCtx.fillRect(0, 0, 256, 64);
+        for (let x = 0; x < 256; x += 32) {
+            gCtx.fillStyle = '#fbbf24';
+            gCtx.fillRect(x + 2, 2, 28, 60);
+            gCtx.fillStyle = '#fef08a';
+            gCtx.beginPath();
+            const cx = x + 16;
+            const cy = 32;
+            gCtx.moveTo(cx, cy - 14);
+            gCtx.lineTo(cx + 8, cy);
+            gCtx.lineTo(cx, cy + 14);
+            gCtx.lineTo(cx - 8, cy);
+            gCtx.closePath();
+            gCtx.fill();
+        }
+        const goldTex = new THREE.CanvasTexture(canvasGold);
+        goldTex.wrapS = THREE.RepeatWrapping;
+        goldTex.wrapT = THREE.ClampToEdgeWrapping;
+        goldTex.repeat.set(2, 1);
+        const goldMat = new THREE.MeshStandardMaterial({ map: goldTex, roughness: 0.35, metalness: 0.3 });
 
+        const brownTopMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.6 });
+
+        // 3. Build Multi-Piece Seamless Cylindrical Rows (Multiple small pieces per row)
+        const numRows = Math.max(4, Math.min(6, Math.ceil(config.hp / 6)));
+        const piecesPerRow = 8;
+        const totalPieces = numRows * piecesPerRow;
+        const rowHeight = totalHeight / numRows;
+
+        // Inner solid core
+        const coreMat = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.7 });
+        const coreMesh = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.72, radius * 0.72, totalHeight * 0.98, 24), coreMat);
+        coreMesh.position.y = totalHeight / 2;
+        group.add(coreMesh);
+
+        // Store all small pieces ordered from Top Row down to Bottom Row
+        const allPieces = [];
+
+        for (let r = numRows - 1; r >= 0; r--) {
+            const rowY = (r + 0.5) * rowHeight;
+            const thetaStep = (Math.PI * 2) / piecesPerRow;
+
+            for (let p = 0; p < piecesPerRow; p++) {
+                const thetaStart = p * thetaStep;
+                const thetaCenter = thetaStart + thetaStep / 2;
+
+                // Seamless curved cylinder segment
+                const pieceGeo = new THREE.CylinderGeometry(radius, radius, rowHeight * 0.99, 4, 1, false, thetaStart, thetaStep);
+                const pieceMesh = new THREE.Mesh(pieceGeo, cylinderMat);
+                pieceMesh.position.y = rowY;
+                pieceMesh.castShadow = true;
+                pieceMesh.receiveShadow = true;
+
+                pieceMesh.userData = {
+                    row: r,
+                    y: rowY,
+                    angleCenter: thetaCenter
+                };
+
+                group.add(pieceMesh);
+                allPieces.push(pieceMesh);
+            }
+        }
+
+        // 4. Raised Golden Core Platform with Brown Top Center (matching Image 1)
+        const coreGroup = new THREE.Group();
+        coreGroup.position.y = totalHeight;
+
+        // Golden raised ring
+        const goldRimMesh = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.76, radius * 0.76, 0.22, 32), goldMat);
+        goldRimMesh.position.y = 0.11;
+        coreGroup.add(goldRimMesh);
+
+        // Brown center disc on top
+        const brownCenterMesh = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.60, 32), brownTopMat);
+        brownCenterMesh.rotation.x = -Math.PI / 2;
+        brownCenterMesh.position.y = 0.221;
+        coreGroup.add(brownCenterMesh);
+
+        group.add(coreGroup);
+
+        // 5. Showcase Upgrade Cannon on top
         const showcaseData = this.buildCannonModel(config.tier, true);
         const showcaseMesh = showcaseData.mesh;
-        showcaseMesh.position.set(0, config.height / 2 + 0.02, 0);
+        showcaseMesh.position.set(0, totalHeight + 0.24, 0);
         group.add(showcaseMesh);
 
+        // 6. Floating HP Badge in front (matching Image 1)
         const canvas = document.createElement('canvas');
-        canvas.width = 320;
-        canvas.height = 200;
+        canvas.width = 280;
+        canvas.height = 180;
         const ctx = canvas.getContext('2d');
 
         const updateLabel = (hp) => {
-            ctx.clearRect(0, 0, 320, 200);
-            ctx.font = '900 120px "Arial Black", Impact, sans-serif';
+            ctx.clearRect(0, 0, 280, 180);
+
+            // Clean bold white number with thick outline
+            ctx.font = '900 110px "Arial Black", Impact, sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.lineWidth = 20;
+            ctx.lineWidth = 22;
             ctx.strokeStyle = '#0f172a';
             ctx.lineJoin = 'round';
-            ctx.strokeText(`${Math.max(0, Math.ceil(hp))}`, 160, 100);
+            ctx.strokeText(`${Math.max(0, Math.ceil(hp))}`, 140, 90);
             ctx.fillStyle = '#ffffff';
-            ctx.fillText(`${Math.max(0, Math.ceil(hp))}`, 160, 100);
+            ctx.fillText(`${Math.max(0, Math.ceil(hp))}`, 140, 90);
         };
         updateLabel(config.hp);
 
         const labelTex = new THREE.CanvasTexture(canvas);
         const labelMesh = new THREE.Mesh(
-            new THREE.PlaneGeometry(config.width * 0.88, config.height * 0.75),
+            new THREE.PlaneGeometry(1.4, 0.90),
             new THREE.MeshBasicMaterial({ map: labelTex, transparent: true, side: THREE.FrontSide })
         );
-        labelMesh.position.set(0, 0, -config.depth / 2 - 0.02);
+        labelMesh.position.set(0, totalHeight * 0.5 + 0.1, -radius - 0.08);
         labelMesh.rotation.set(0, Math.PI, 0);
         group.add(labelMesh);
 
         this.scene.add(group);
+
+        // Small flying cube geometry for flying debris
+        const debrisCubeGeo = new THREE.BoxGeometry(0.28, 0.28, 0.28);
 
         const blockObj = {
             id: config.id,
@@ -1107,27 +1294,81 @@ export class Game3D {
             isLocked: isLocked,
             tier: config.tier,
             group: group,
-            blockMesh: blockMesh,
             showcaseMesh: showcaseMesh,
             x: config.x,
             z: config.z,
-            width: config.width,
-            height: config.height,
-            depth: config.depth,
+            width: config.width || 2.2,
+            height: totalHeight,
+            depth: config.depth || 2.2,
             hp: config.hp,
             maxHp: config.hp,
             isDestroyed: false,
-            onHit: () => {
+            onHit: (dmg = 1) => {
                 updateLabel(blockObj.hp);
                 labelTex.needsUpdate = true;
 
-                group.scale.set(1.08, 0.94, 1.08);
+                // Calculate target remaining pieces
+                const targetRemaining = Math.max(0, Math.ceil((blockObj.hp / blockObj.maxHp) * totalPieces));
+
+                // Pop individual small pieces from top to bottom
+                while (allPieces.length > targetRemaining) {
+                    const poppedPiece = allPieces.shift();
+                    const u = poppedPiece.userData;
+
+                    const pieceWorldPos = new THREE.Vector3(
+                        config.x + Math.cos(u.angleCenter) * radius * 0.88,
+                        u.y,
+                        config.z + Math.sin(u.angleCenter) * radius * 0.88
+                    );
+
+                    group.remove(poppedPiece);
+
+                    // Spawn flying 3D stone cube bursting out (matching Image 1 flying cubes)
+                    const flyingCube = new THREE.Mesh(debrisCubeGeo, cylinderMat);
+                    flyingCube.position.copy(pieceWorldPos);
+
+                    const outAngle = u.angleCenter;
+                    flyingCube.userData = {
+                        vx: Math.cos(outAngle) * (3.5 + Math.random() * 3),
+                        vy: 4.0 + Math.random() * 3.5,
+                        vz: Math.sin(outAngle) * (3.5 + Math.random() * 3),
+                        rotX: (Math.random() - 0.5) * 12,
+                        rotY: (Math.random() - 0.5) * 12,
+                        life: 1.1
+                    };
+                    this.scene.add(flyingCube);
+                    this.debrisList.push(flyingCube);
+
+                    // Sparks bursting at point of impact
+                    this.spawnSparkBurst(pieceWorldPos.x, pieceWorldPos.y, pieceWorldPos.z, 0xfacc15);
+                    this.spawnSparkBurst(pieceWorldPos.x, pieceWorldPos.y, pieceWorldPos.z, 0xffffff);
+                }
+
+                // Check highest remaining row to adjust cannon height
+                let currentHighestY = 0;
+                for (let p of allPieces) {
+                    if (p.userData.y > currentHighestY) {
+                        currentHighestY = p.userData.y;
+                    }
+                }
+
+                if (currentHighestY > 0) {
+                    const topY = currentHighestY + rowHeight * 0.5;
+                    coreGroup.position.y = topY;
+                    showcaseMesh.position.y = topY + 0.24;
+                    coreMesh.scale.y = Math.max(0.2, topY / totalHeight);
+                    coreMesh.position.y = topY / 2;
+                }
+
+                // Subtle punch bounce
+                group.scale.set(1.05, 0.96, 1.05);
                 setTimeout(() => {
                     if (group) group.scale.set(1.0, 1.0, 1.0);
-                }, 70);
+                }, 60);
             },
             onDestroy: () => {
-                this.spawnDebrisExplosion(group.position, 0xfacc15, 20);
+                this.spawnDebrisExplosion(new THREE.Vector3(config.x, totalHeight / 2, config.z), 0x64748b, 24);
+                this.spawnDebrisExplosion(new THREE.Vector3(config.x, totalHeight / 2, config.z), 0xfacc15, 16);
                 group.visible = false;
             }
         };
@@ -1141,93 +1382,235 @@ export class Game3D {
 
         const isLocked = (config.level || 1) > 1;
 
-        const redMainMat = new THREE.MeshStandardMaterial({ color: 0xff4136, roughness: 0.35, metalness: 0.1 });
-        const darkTrimMat = new THREE.MeshStandardMaterial({ color: 0x3d0c0c, roughness: 0.6 });
-        const doorInnerMat = new THREE.MeshStandardMaterial({ color: 0x8a3324, roughness: 0.5 });
-        const woodPoleMat = new THREE.MeshStandardMaterial({ color: 0x8d5b4c, roughness: 0.7 });
-        const brightRedFlagMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, side: THREE.DoubleSide });
+        // Colors matching reference image
+        const cyanMat = new THREE.MeshStandardMaterial({ color: 0x81d4fa, roughness: 0.35, metalness: 0.1 });
+        const darkNavyMat = new THREE.MeshStandardMaterial({ color: 0x1e3a5f, roughness: 0.4, metalness: 0.2 });
+        const tanSkinMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.45 });
+        const blueShortsMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.4 });
+        const redClubMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.3 });
+        const goldRivetMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.25, metalness: 0.3 });
 
-        const bW = config.width || 2.5;
-        const bH = config.height || 3.2;
-        const bD = config.depth || 2.2;
+        // 1. ROUNDED CYAN PODIUM STAGE (Base)
+        const baseMesh = new THREE.Mesh(new THREE.CylinderGeometry(1.42, 1.48, 0.30, 32), cyanMat);
+        baseMesh.position.y = 0.15;
+        baseMesh.receiveShadow = true;
+        group.add(baseMesh);
 
-        const baseRim = new THREE.Mesh(new THREE.BoxGeometry(bW * 1.04, 0.28, bD * 1.04), darkTrimMat);
-        baseRim.position.y = 0.14;
-        baseRim.castShadow = true;
-        group.add(baseRim);
+        // 2. SUPPORT POSTS & FINIALS (Left & Right)
+        [-1.18, 1.18].forEach(px => {
+            const post = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.10, 2.3, 16), cyanMat);
+            post.position.set(px, 1.30, 0);
+            post.castShadow = true;
+            group.add(post);
 
-        const mainBody = new THREE.Mesh(new THREE.BoxGeometry(bW, bH * 0.95, bD), redMainMat);
-        mainBody.position.y = (bH * 0.95) / 2 + 0.14;
-        mainBody.castShadow = true;
-        mainBody.receiveShadow = true;
-        group.add(mainBody);
+            const finial = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 16), cyanMat);
+            finial.position.set(px, 2.45, 0);
+            group.add(finial);
 
-        const roofTrim = new THREE.Mesh(new THREE.BoxGeometry(bW * 1.05, 0.22, bD * 1.05), darkTrimMat);
-        roofTrim.position.y = bH * 0.95 + 0.14 + 0.11;
-        roofTrim.castShadow = true;
-        group.add(roofTrim);
-
-        [-bW / 2 - 0.02, bW / 2 + 0.02].forEach(px => {
-            const sideTrim = new THREE.Mesh(new THREE.BoxGeometry(0.12, bH * 0.95, bD * 0.8), darkTrimMat);
-            sideTrim.position.set(px, (bH * 0.95) / 2 + 0.14, 0);
-            group.add(sideTrim);
+            // Curved side support bracket arms
+            const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.45, 12), cyanMat);
+            arm.position.set(px > 0 ? px - 0.20 : px + 0.20, 1.65, 0);
+            arm.rotation.z = px > 0 ? -Math.PI / 4 : Math.PI / 4;
+            group.add(arm);
         });
 
-        const doorFrame = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.90, 0.15), darkTrimMat);
-        doorFrame.position.set(0, 0.58, -bD / 2 - 0.06);
-        group.add(doorFrame);
+        // 3. SPEEDOMETER / GAUGE DIAL (Center)
+        const dialGroup = new THREE.Group();
+        dialGroup.position.set(0, 1.65, 0);
 
-        const doorInner = new THREE.Mesh(new THREE.PlaneGeometry(0.64, 0.76), doorInnerMat);
-        doorInner.position.set(0, 0.50, -bD / 2 - 0.14);
-        doorInner.rotation.y = Math.PI;
-        group.add(doorInner);
+        // Outer Dark Navy Casing
+        const casing = new THREE.Mesh(new THREE.CylinderGeometry(1.08, 1.08, 0.22, 32), darkNavyMat);
+        casing.rotation.x = Math.PI / 2;
+        casing.castShadow = true;
+        dialGroup.add(casing);
 
-        const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.22, 0.28), darkTrimMat);
-        canopy.position.set(0, 0.98, -bD / 2 - 0.12);
-        group.add(canopy);
+        // Dial Face (Cream background with graduation ticks)
+        const dialCanvas = document.createElement('canvas');
+        dialCanvas.width = 512;
+        dialCanvas.height = 512;
+        const dCtx = dialCanvas.getContext('2d');
 
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.4), woodPoleMat);
-        pole.position.set(0, bH + 0.65, 0);
-        group.add(pole);
+        // Draw Cream Dial Face
+        dCtx.fillStyle = '#fffef0';
+        dCtx.beginPath();
+        dCtx.arc(256, 256, 240, 0, Math.PI * 2);
+        dCtx.fill();
 
-        const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.42), brightRedFlagMat);
-        flag.position.set(0.38, bH + 1.05, 0);
-        group.add(flag);
+        // Outer dark ring
+        dCtx.lineWidth = 18;
+        dCtx.strokeStyle = '#1e3a5f';
+        dCtx.stroke();
 
-        const canvas = document.createElement('canvas');
-        canvas.width = 380;
-        canvas.height = 200;
-        const ctx = canvas.getContext('2d');
+        // Draw Graduation Tick Marks
+        for (let i = 0; i < 24; i++) {
+            const angle = (i * Math.PI * 2) / 24;
+            const isMajor = i % 2 === 0;
+            const rInner = isMajor ? 175 : 198;
+            const rOuter = 228;
 
-        const updateHpLabel = (hp) => {
-            ctx.clearRect(0, 0, 380, 200);
-            ctx.fillStyle = '#8b2e2b';
-            this.roundRect(ctx, 8, 8, 364, 184, 18, true, false);
+            const x1 = 256 + Math.cos(angle) * rInner;
+            const y1 = 256 + Math.sin(angle) * rInner;
+            const x2 = 256 + Math.cos(angle) * rOuter;
+            const y2 = 256 + Math.sin(angle) * rOuter;
 
-            ctx.lineWidth = 14;
-            ctx.strokeStyle = '#2b0909';
-            this.roundRect(ctx, 8, 8, 364, 184, 18, false, true);
+            dCtx.lineWidth = isMajor ? 12 : 6;
+            dCtx.strokeStyle = '#1e293b';
+            dCtx.beginPath();
+            dCtx.moveTo(x1, y1);
+            dCtx.lineTo(x2, y2);
+            dCtx.stroke();
+        }
 
-            ctx.font = '900 115px "Arial Black", Impact, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.lineWidth = 24;
-            ctx.strokeStyle = '#0f172a';
-            ctx.lineJoin = 'round';
-            ctx.strokeText(`${Math.max(0, Math.ceil(hp))}`, 190, 100);
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(`${Math.max(0, Math.ceil(hp))}`, 190, 100);
+        // Center hub
+        dCtx.fillStyle = '#0f172a';
+        dCtx.beginPath();
+        dCtx.arc(256, 256, 28, 0, Math.PI * 2);
+        dCtx.fill();
+
+        const dialTex = new THREE.CanvasTexture(dialCanvas);
+        const dialFace = new THREE.Mesh(
+            new THREE.CircleGeometry(0.96, 32),
+            new THREE.MeshBasicMaterial({ map: dialTex, side: THREE.FrontSide })
+        );
+        dialFace.position.set(0, 0, -0.12);
+        dialFace.rotation.y = Math.PI;
+        dialGroup.add(dialFace);
+
+        // 3D Bright Red Needle Pointer
+        const needleGroup = new THREE.Group();
+        needleGroup.position.set(0, 0, -0.13);
+
+        const needleMesh = new THREE.Mesh(
+            new THREE.ConeGeometry(0.08, 0.72, 12),
+            new THREE.MeshBasicMaterial({ color: 0xef4444 })
+        );
+        needleMesh.position.y = 0.36;
+        needleMesh.rotation.z = Math.PI;
+        needleGroup.add(needleMesh);
+
+        const needlePin = new THREE.Mesh(
+            new THREE.SphereGeometry(0.12, 12, 12),
+            new THREE.MeshBasicMaterial({ color: 0x0f172a })
+        );
+        needleGroup.add(needlePin);
+        needleGroup.rotation.z = 0.75; // Pointing to ~10 o'clock position
+        dialGroup.add(needleGroup);
+
+        group.add(dialGroup);
+
+        // 4. TRAINING CHARACTER DUMMY (In front of dial)
+        const dummyGroup = new THREE.Group();
+        dummyGroup.position.set(0, 0.30, -0.32);
+
+        // Base Pedestal with rivets
+        const dummyBase = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 0.24, 16), cyanMat);
+        dummyBase.position.y = 0.12;
+        dummyGroup.add(dummyBase);
+
+        for (let a = 0; a < 6; a++) {
+            const angle = (a * Math.PI * 2) / 6;
+            const rivet = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), goldRivetMat);
+            rivet.position.set(Math.cos(angle) * 0.34, 0.12, Math.sin(angle) * 0.34);
+            dummyGroup.add(rivet);
+        }
+
+        // Dummy Torso
+        const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.17, 0.40, 16), tanSkinMat);
+        torso.position.y = 0.48;
+        dummyGroup.add(torso);
+
+        // Blue Shorts
+        const shorts = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.16, 16), blueShortsMat);
+        shorts.position.y = 0.32;
+        dummyGroup.add(shorts);
+
+        // Legs
+        [-0.08, 0.08].forEach(lx => {
+            const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.22, 12), tanSkinMat);
+            leg.position.set(lx, 0.18, 0);
+            dummyGroup.add(leg);
+        });
+
+        // Dummy Head
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 16), tanSkinMat);
+        head.position.y = 0.82;
+        dummyGroup.add(head);
+
+        // Arms holding red clubs
+        [-0.26, 0.26].forEach(ax => {
+            const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.28, 8), tanSkinMat);
+            arm.position.set(ax, 0.50, -0.06);
+            arm.rotation.z = ax > 0 ? -Math.PI / 4 : Math.PI / 4;
+            arm.rotation.x = Math.PI / 6;
+            dummyGroup.add(arm);
+
+            const club = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.04, 0.38, 8), redClubMat);
+            club.position.set(ax > 0 ? ax + 0.14 : ax - 0.14, 0.36, -0.16);
+            club.rotation.z = ax > 0 ? -Math.PI / 3 : Math.PI / 3;
+            dummyGroup.add(club);
+        });
+
+        group.add(dummyGroup);
+
+        // 5. FLOATING CAPSULE HP BAR (With actual HP number replacing Level text)
+        const hpCanvas = document.createElement('canvas');
+        hpCanvas.width = 512;
+        hpCanvas.height = 160;
+        const hpCtx = hpCanvas.getContext('2d');
+
+        const updateHpLabel = (hp, maxHp) => {
+            hpCtx.clearRect(0, 0, 512, 160);
+
+            const x = 16, y = 20, w = 480, h = 120, r = 60;
+            const ratio = Math.max(0, Math.min(1.0, hp / maxHp));
+
+            // Background pill (unfilled dark slate-blue)
+            hpCtx.fillStyle = '#64748b';
+            this.roundRect(hpCtx, x, y, w, h, r, true, false);
+
+            // Active HP Fill with smooth gradient
+            if (ratio > 0) {
+                hpCtx.save();
+                this.roundRect(hpCtx, x, y, w, h, r, false, false);
+                hpCtx.clip();
+
+                const grad = hpCtx.createLinearGradient(x, y, x + w, y);
+                grad.addColorStop(0.0, '#ef4444');
+                grad.addColorStop(0.35, '#f97316');
+                grad.addColorStop(0.75, '#facc15');
+                grad.addColorStop(1.0, '#eab308');
+                hpCtx.fillStyle = grad;
+                hpCtx.fillRect(x, y, w * ratio, h);
+
+                hpCtx.restore();
+            }
+
+            // Dark rounded border
+            hpCtx.lineWidth = 14;
+            hpCtx.strokeStyle = '#0f172a';
+            this.roundRect(hpCtx, x, y, w, h, r, false, true);
+
+            // Center HP number
+            hpCtx.font = '900 70px "Arial Black", Impact, sans-serif';
+            hpCtx.textAlign = 'center';
+            hpCtx.textBaseline = 'middle';
+            hpCtx.lineWidth = 18;
+            hpCtx.strokeStyle = '#0f172a';
+            hpCtx.lineJoin = 'round';
+            hpCtx.strokeText(`${Math.max(0, Math.ceil(hp))}`, 256, 80);
+            hpCtx.fillStyle = '#ffffff';
+            hpCtx.fillText(`${Math.max(0, Math.ceil(hp))}`, 256, 80);
         };
-        updateHpLabel(config.hp);
+        updateHpLabel(config.hp, config.maxHp || config.hp);
 
-        const hpTex = new THREE.CanvasTexture(canvas);
+        const hpTex = new THREE.CanvasTexture(hpCanvas);
         hpTex.needsUpdate = true;
 
         const hpScreen = new THREE.Mesh(
-            new THREE.PlaneGeometry(bW * 0.88, 0.90),
+            new THREE.PlaneGeometry(2.35, 0.74),
             new THREE.MeshBasicMaterial({ map: hpTex, transparent: true, side: THREE.FrontSide })
         );
-        hpScreen.position.set(0, bH * 0.65 + 0.15, -bD / 2 - 0.05);
+        hpScreen.position.set(0, 3.25, -0.15);
         hpScreen.rotation.set(0, Math.PI, 0);
         group.add(hpScreen);
 
@@ -1240,24 +1623,28 @@ export class Game3D {
             group: group,
             x: config.x,
             z: config.z,
-            width: config.width,
-            depth: config.depth,
+            width: 2.8,
+            depth: 2.4,
             hp: config.hp,
-            maxHp: config.maxHp,
+            maxHp: config.maxHp || config.hp,
             spawnInterval: config.spawnInterval,
             spawnTimer: 0,
             isDestroyed: false,
             onHit: () => {
-                updateHpLabel(barracksObj.hp);
+                updateHpLabel(barracksObj.hp, barracksObj.maxHp);
                 hpTex.needsUpdate = true;
 
-                group.scale.set(1.1, 0.92, 1.1);
+                // Needle shake animation
+                needleGroup.rotation.z = 0.75 + (Math.random() - 0.5) * 0.45;
+
+                group.scale.set(1.08, 0.94, 1.08);
                 setTimeout(() => {
                     if (group) group.scale.set(1.0, 1.0, 1.0);
-                }, 80);
+                }, 75);
             },
             onDestroy: () => {
-                this.spawnDebrisExplosion(group.position, 0xdc2626, 22);
+                this.spawnDebrisExplosion(group.position, 0x81d4fa, 22);
+                this.spawnDebrisExplosion(group.position, 0xf59e0b, 16);
                 group.visible = false;
             }
         };
@@ -1644,6 +2031,10 @@ export class Game3D {
             this.cannonX += (this.targetCannonX - this.cannonX) * 16 * delta;
             this.cannonX = THREE.MathUtils.clamp(this.cannonX, this.minCannonX, this.maxCannonX);
             this.cannonGroup.position.x = this.cannonX;
+
+            // Camera framing matching reference
+            this.camera.position.set(0, 14.5, this.cannonZ - 14.5);
+            this.camera.lookAt(0, 1.2, this.cannonZ + 12.0);
         }
 
         // Ease scale back to 1.0 after upgrade
@@ -1831,7 +2222,7 @@ export class Game3D {
             mob.model.position.set(mob.x, hop, mob.z);
 
             const headingAngle = Math.atan2(mob.vx, mob.vz);
-            mob.model.rotation.y = headingAngle * 0.75;
+            mob.model.rotation.y = Math.PI + headingAngle * 0.75;
             mob.model.rotation.x = 0.12;
             mob.model.rotation.z = Math.sin((this.animTime + mob.animOffset) * 6.6) * 0.05;
 
@@ -1933,8 +2324,8 @@ export class Game3D {
 
                 if (Math.abs(dz) < block.depth / 2 + 0.35 && Math.abs(dx) < block.width / 2 + 0.25) {
                     mob.isAlive = false;
-                    block.hp -= 2;
-                    block.onHit(2);
+                    block.hp -= 1;
+                    block.onHit(1);
                     this.spawnSparkBurst(mob.x, 0.6, mob.z, 0xfacc15);
 
                     if (block.hp <= 0 && !block.isDestroyed) {
