@@ -6,6 +6,7 @@ import sfxClick from './assets/Sound/click.mp3';
 import sfxComplete from './assets/Sound/levelcomplete.mp3';
 import sfxGameover from './assets/Sound/gameover.mp3';
 import handImg from './assets/images/hand.webp';
+import iconImg from './assets/images/icon.webp';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -18,6 +19,7 @@ export class GameScene extends Phaser.Scene {
             this.load.audio('sfx_complete', sfxComplete);
             this.load.audio('sfx_gameover', sfxGameover);
             this.load.image('icon_hand', handImg);
+            this.load.image('app_icon', iconImg);
         } catch (e) {
             console.warn('Audio preload fallback', e);
         }
@@ -80,6 +82,7 @@ export class GameScene extends Phaser.Scene {
 
         // Tutorial drag hint during start (Only UI kept)
         this.createTutorialHint();
+        this.createTopLeftIcon();
 
         // Input listeners
         this.input.on('pointerdown', (pointer) => {
@@ -260,6 +263,117 @@ export class GameScene extends Phaser.Scene {
         });
     }
 
+    createTopLeftIcon() {
+        const iconSize = Math.min(64, Math.max(52, this.w * 0.13));
+        const paddingX = 16;
+        const paddingY = 16;
+
+        // Create rounded texture from app_icon to guarantee clean masked corners
+        const canvasKey = 'rounded_app_icon';
+        if (!this.textures.exists(canvasKey)) {
+            const src = this.textures.get('app_icon').getSourceImage();
+            const res = 256;
+            const canvas = this.textures.createCanvas(canvasKey, res, res);
+            const ctx = canvas.getContext();
+            const radius = 54;
+
+            ctx.clearRect(0, 0, res, res);
+            ctx.beginPath();
+            ctx.moveTo(radius, 0);
+            ctx.lineTo(res - radius, 0);
+            ctx.quadraticCurveTo(res, 0, res, radius);
+            ctx.lineTo(res, res - radius);
+            ctx.quadraticCurveTo(res, res, res - radius, res);
+            ctx.lineTo(radius, res);
+            ctx.quadraticCurveTo(0, res, 0, res - radius);
+            ctx.lineTo(0, radius);
+            ctx.quadraticCurveTo(0, 0, radius, 0);
+            ctx.closePath();
+            ctx.clip();
+            ctx.drawImage(src, 0, 0, res, res);
+            canvas.refresh();
+        }
+
+        const brandContainer = this.add.container(paddingX, paddingY);
+        brandContainer.setDepth(1000);
+
+        // Shadow behind icon
+        const shadow = this.add.graphics();
+        shadow.fillStyle(0x000000, 0.3);
+        shadow.fillRoundedRect(2, 3, iconSize, iconSize, 14);
+        brandContainer.add(shadow);
+
+        // App Icon image (using rounded texture)
+        const icon = this.add.image(0, 0, canvasKey)
+            .setOrigin(0, 0)
+            .setDisplaySize(iconSize, iconSize);
+        brandContainer.add(icon);
+
+        // Border outline
+        const border = this.add.graphics();
+        border.lineStyle(2.5, 0xffffff, 0.95);
+        border.strokeRoundedRect(0, 0, iconSize, iconSize, 14);
+        brandContainer.add(border);
+
+        // Play Now Button right below icon
+        const btnW = iconSize + 6;
+        const btnH = 22;
+        const btnY = iconSize + 14;
+
+        const btnContainer = this.add.container(iconSize / 2, btnY);
+
+        // Button shadow
+        const btnShadow = this.add.graphics();
+        btnShadow.fillStyle(0x000000, 0.3);
+        btnShadow.fillRoundedRect(-btnW / 2 + 1, -btnH / 2 + 2, btnW, btnH, 11);
+        btnContainer.add(btnShadow);
+
+        // Button body
+        const btnBg = this.add.graphics();
+        btnBg.fillStyle(0x22c55e, 1);
+        btnBg.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 11);
+        btnBg.lineStyle(2, 0xffffff, 1);
+        btnBg.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 11);
+        btnContainer.add(btnBg);
+
+        // Button Text
+        const btnText = this.add.text(0, 0, 'PLAY NOW', {
+            fontFamily: '"Arial Black", Impact, sans-serif',
+            fontSize: '10px',
+            color: '#ffffff',
+            stroke: '#15803d',
+            strokeThickness: 3
+        }).setOrigin(0.5);
+        btnContainer.add(btnText);
+
+        brandContainer.add(btnContainer);
+
+        // Gentle pulse animation for PLAY NOW button
+        this.tweens.add({
+            targets: btnContainer,
+            scaleX: 1.08,
+            scaleY: 1.08,
+            duration: 650,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        // Click interaction for Icon
+        icon.setInteractive(new Phaser.Geom.Rectangle(0, 0, iconSize, iconSize), Phaser.Geom.Rectangle.Contains);
+        icon.on('pointerdown', (pointer, localX, localY, event) => {
+            if (event && event.stopPropagation) event.stopPropagation();
+            this.ShowStore();
+        });
+
+        // Click interaction for Play Now button
+        btnBg.setInteractive(new Phaser.Geom.Rectangle(-btnW / 2, -btnH / 2, btnW, btnH), Phaser.Geom.Rectangle.Contains);
+        btnBg.on('pointerdown', (pointer, localX, localY, event) => {
+            if (event && event.stopPropagation) event.stopPropagation();
+            this.ShowStore();
+        });
+    }
+
     startGame() {
         this.gameStarted = true;
         if (this.tutorialGroup) {
@@ -274,11 +388,7 @@ export class GameScene extends Phaser.Scene {
         if (typeof window.gameStart === 'function') {
             window.gameStart();
         }
-
-        // Tự động showStore sau 8s kể từ khi bắt đầu chơi (kích hoạt 1 lần duy nhất)
-        this.time.delayedCall(8000, () => {
-            this.ShowStore();
-        });
+        
     }
 
     handleShoot() {
