@@ -6,6 +6,7 @@ import sfxClick from './assets/Sound/click.mp3';
 import sfxComplete from './assets/Sound/levelcomplete.mp3';
 import sfxGameover from './assets/Sound/gameover.mp3';
 import handImgUrl from './assets/Image/hand.webp';
+import iconImgUrl from './assets/Image/icon.webp';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -37,9 +38,9 @@ export class GameScene extends Phaser.Scene {
         coinG.strokeCircle(16, 16, 13);
         coinG.generateTexture('icon_coin', 32, 32);
 
-
-        // Load cartoon hand icon
+        // Load cartoon hand icon and game app icon
         this.load.image('icon_hand', handImgUrl);
+        this.load.image('game_icon', iconImgUrl);
     }
 
     create() {
@@ -78,6 +79,9 @@ export class GameScene extends Phaser.Scene {
 
         // Tutorial drag hint during start (Only UI kept)
         this.createTutorialHint();
+
+        // Top-left app icon and PLAY NOW button
+        this.createTopLeftAppBanner();
 
         // Input listeners
         this.input.on('pointerdown', (pointer) => {
@@ -184,6 +188,95 @@ export class GameScene extends Phaser.Scene {
         }
     }
 
+    createTopLeftAppBanner() {
+        const paddingX = 18;
+        const paddingY = 18;
+        const iconSize = 64;
+
+        this.appBannerGroup = this.add.container(paddingX, paddingY);
+        this.appBannerGroup.setDepth(100);
+
+        // Icon background shadow
+        const shadow = this.add.graphics();
+        shadow.fillStyle(0x000000, 0.45);
+        shadow.fillRoundedRect(2, 4, iconSize, iconSize, 14);
+        this.appBannerGroup.add(shadow);
+
+        // App Icon
+        const icon = this.add.image(0, 0, 'game_icon');
+        icon.setOrigin(0, 0);
+        icon.setDisplaySize(iconSize, iconSize);
+
+        // Rounded corners mask for icon
+        const maskG = this.make.graphics({ x: paddingX, y: paddingY, add: false });
+        maskG.fillStyle(0xffffff);
+        maskG.fillRoundedRect(0, 0, iconSize, iconSize, 14);
+        const iconMask = maskG.createGeometryMask();
+        icon.setMask(iconMask);
+        this.appBannerGroup.add(icon);
+
+        // Rounded border around icon
+        const border = this.add.graphics();
+        border.lineStyle(2, 0xffffff, 0.85);
+        border.strokeRoundedRect(0, 0, iconSize, iconSize, 14);
+        this.appBannerGroup.add(border);
+
+        // Click zone for icon
+        const iconHitArea = this.add.zone(iconSize / 2, iconSize / 2, iconSize, iconSize)
+            .setInteractive({ useHandCursor: true });
+        iconHitArea.on('pointerdown', () => this.ShowStore());
+        this.appBannerGroup.add(iconHitArea);
+
+        // "PLAY NOW" Button container below the icon
+        const btnW = 74;
+        const btnH = 26;
+        const btnY = iconSize + 8;
+        const btnCenterX = iconSize / 2;
+
+        const playBtnContainer = this.add.container(btnCenterX, btnY + btnH / 2);
+
+        // Button shadow & background
+        const btnShadow = this.add.graphics();
+        btnShadow.fillStyle(0x000000, 0.4);
+        btnShadow.fillRoundedRect(-btnW / 2 + 1, -btnH / 2 + 2, btnW, btnH, 13);
+        playBtnContainer.add(btnShadow);
+
+        const btnBg = this.add.graphics();
+        btnBg.fillStyle(0x22c55e, 1); // Vibrant green CTA
+        btnBg.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 13);
+        btnBg.lineStyle(2, 0xffffff, 0.95);
+        btnBg.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 13);
+        playBtnContainer.add(btnBg);
+
+        // Button text: "PLAY NOW"
+        const btnText = this.add.text(0, 0, 'PLAY NOW', {
+            fontFamily: '"Arial Black", Impact, sans-serif',
+            fontSize: '11px',
+            color: '#ffffff',
+            stroke: '#15803d',
+            strokeThickness: 3
+        }).setOrigin(0.5);
+        playBtnContainer.add(btnText);
+
+        // Make button interactive
+        playBtnContainer.setSize(btnW, btnH);
+        playBtnContainer.setInteractive({ useHandCursor: true });
+        playBtnContainer.on('pointerdown', () => this.ShowStore());
+
+        // Pulsing breathing animation on PLAY NOW button
+        this.tweens.add({
+            targets: playBtnContainer,
+            scaleX: 1.08,
+            scaleY: 1.08,
+            duration: 650,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        this.appBannerGroup.add(playBtnContainer);
+    }
+
     createTutorialHint() {
         this.tutorialGroup = this.add.container(this.centerX, this.h * 0.74);
 
@@ -243,12 +336,6 @@ export class GameScene extends Phaser.Scene {
             window.gameStart();
         }
 
-        // Tự động show store sau 8s chơi (chỉ kích hoạt 1 lần duy nhất)
-        this.time.delayedCall(8000, () => {
-            if (!this.hasTriggeredStore) {
-                this.ShowStore();
-            }
-        });
     }
 
     handleShoot() {
