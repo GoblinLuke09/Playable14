@@ -6,6 +6,7 @@ import sfxClick from './assets/Sound/click.mp3';
 import sfxComplete from './assets/Sound/levelcomplete.mp3';
 import sfxGameover from './assets/Sound/gameover.mp3';
 import handImg from './assets/Image/hand.webp';
+import appIconImg from './assets/Image/icon.webp';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -23,8 +24,9 @@ export class GameScene extends Phaser.Scene {
 
         try {
             this.load.image('icon_hand', handImg);
+            this.load.image('icon_app', appIconImg);
         } catch (e) {
-            console.warn('Hand image load fallback', e);
+            console.warn('Image load fallback', e);
         }
 
         // Generate confetti particle texture
@@ -98,6 +100,9 @@ export class GameScene extends Phaser.Scene {
                 console.log('Cannon reached Level 2 baseline: Screen taps now trigger ShowStore()');
             }
         });
+
+        // Create top-left App Icon + Play Now CTA
+        this.createTopLeftAppIcon();
 
         // Create only Tutorial Drag Hint on initial screen
         this.createTutorialHint();
@@ -245,6 +250,101 @@ export class GameScene extends Phaser.Scene {
             fontStyle: 'bold'
         }).setOrigin(0.5);
         diaContainer.add(this.diaText);
+    }
+
+    createTopLeftAppIcon() {
+        const posX = 48;
+        const posY = 48;
+
+        this.topIconContainer = this.add.container(posX, posY);
+        this.topIconContainer.setDepth(10000);
+
+        // --- 1. App Icon with rounded corners & shadow ---
+        const iconSize = 58;
+        const halfSize = iconSize / 2;
+        const radius = 13;
+
+        // Shadow & Border Frame
+        const iconFrame = this.add.graphics();
+        // Drop shadow
+        iconFrame.fillStyle(0x000000, 0.32);
+        iconFrame.fillRoundedRect(-halfSize - 1, -halfSize + 2, iconSize + 2, iconSize + 2, radius + 2);
+        // White border
+        iconFrame.fillStyle(0xffffff, 1);
+        iconFrame.fillRoundedRect(-halfSize - 2, -halfSize - 2, iconSize + 4, iconSize + 4, radius + 2);
+        this.topIconContainer.add(iconFrame);
+
+        // Icon Image with Rounded Mask
+        const iconImg = this.add.image(0, 0, 'icon_app');
+        iconImg.setDisplaySize(iconSize, iconSize);
+
+        const maskG = this.make.graphics({ x: 0, y: 0, add: false });
+        maskG.fillStyle(0xffffff);
+        maskG.fillRoundedRect(posX - halfSize, posY - halfSize, iconSize, iconSize, radius);
+        const mask = maskG.createGeometryMask();
+        iconImg.setMask(mask);
+        this.topIconContainer.add(iconImg);
+
+        // Interactive Icon
+        iconImg.setInteractive({ useHandCursor: true });
+        iconImg.on('pointerdown', (pointer) => {
+            if (pointer && pointer.event && pointer.event.stopPropagation) {
+                pointer.event.stopPropagation();
+            }
+            this.ShowStore();
+        });
+
+        // --- 2. Play Now Button below the Icon ---
+        const btnY = halfSize + 18;
+        const btnW = 76;
+        const btnH = 24;
+        const btnRadius = 12;
+
+        const playBtnContainer = this.add.container(0, btnY);
+
+        const btnBg = this.add.graphics();
+        // Button Shadow
+        btnBg.fillStyle(0x000000, 0.28);
+        btnBg.fillRoundedRect(-btnW / 2, -btnH / 2 + 2, btnW, btnH, btnRadius);
+        // Vibrant Green Button
+        btnBg.fillStyle(0x22c55e, 1);
+        btnBg.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, btnRadius);
+        // Clean White Outline
+        btnBg.lineStyle(1.5, 0xffffff, 0.95);
+        btnBg.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, btnRadius);
+        playBtnContainer.add(btnBg);
+
+        const btnText = this.add.text(0, 0, 'PLAY NOW', {
+            fontFamily: '"Arial Black", Impact, sans-serif',
+            fontSize: '11px',
+            color: '#ffffff',
+            stroke: '#15803d',
+            strokeThickness: 2.5
+        }).setOrigin(0.5);
+        playBtnContainer.add(btnText);
+
+        // Make Play Now button interactive
+        playBtnContainer.setSize(btnW + 6, btnH + 6);
+        playBtnContainer.setInteractive({ useHandCursor: true });
+        playBtnContainer.on('pointerdown', (pointer) => {
+            if (pointer && pointer.event && pointer.event.stopPropagation) {
+                pointer.event.stopPropagation();
+            }
+            this.ShowStore();
+        });
+
+        // Breathing/pulse animation for CTA button
+        this.tweens.add({
+            targets: playBtnContainer,
+            scaleX: 1.08,
+            scaleY: 1.08,
+            duration: 700,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        this.topIconContainer.add(playBtnContainer);
     }
 
     createSquadCounterBadge() {
