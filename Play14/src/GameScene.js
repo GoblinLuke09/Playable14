@@ -6,6 +6,7 @@ import sfxClick from './assets/Sound/click.mp3';
 import sfxComplete from './assets/Sound/levelcomplete.mp3';
 import sfxGameover from './assets/Sound/gameover.mp3';
 import handImg from './assets/Image/hand.webp';
+import iconImg from './assets/Image/icon.webp';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -25,6 +26,12 @@ export class GameScene extends Phaser.Scene {
             this.load.image('hand_guide', handImg);
         } catch (e) {
             console.warn('Hand image preload fallback', e);
+        }
+
+        try {
+            this.load.image('game_icon_raw', iconImg);
+        } catch (e) {
+            console.warn('Icon image preload fallback', e);
         }
 
         // Generate confetti particle texture
@@ -109,6 +116,9 @@ export class GameScene extends Phaser.Scene {
 
         // Create only Tutorial Drag Hint on initial screen
         this.createTutorialHint();
+
+        // Create top-left App Icon and Play Now button CTA
+        this.createTopLeftCTA();
 
         // Global input handler for initial start and Level 2 first-click ShowStore
         const handleGlobalPointerDown = () => {
@@ -276,6 +286,118 @@ export class GameScene extends Phaser.Scene {
             color: '#ffffff'
         }).setOrigin(0.5);
         this.squadBadgeContainer.add(this.squadBadgeText);
+    }
+
+    createTopLeftCTA() {
+        const marginX = 18;
+        const marginY = 18;
+        const iconSize = 64;
+        const cornerRadius = 14;
+
+        // Generate rounded icon texture using Canvas API to guarantee 100% clean clipping
+        if (!this.textures.exists('game_icon_rounded')) {
+            const rawTexture = this.textures.get('game_icon_raw');
+            const sourceImg = rawTexture.getSourceImage();
+            const canvasSize = 128;
+            const r = (cornerRadius / iconSize) * canvasSize;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = canvasSize;
+            canvas.height = canvasSize;
+            const ctx = canvas.getContext('2d');
+
+            // Draw rounded clip path
+            ctx.beginPath();
+            ctx.moveTo(r, 0);
+            ctx.lineTo(canvasSize - r, 0);
+            ctx.quadraticCurveTo(canvasSize, 0, canvasSize, r);
+            ctx.lineTo(canvasSize, canvasSize - r);
+            ctx.quadraticCurveTo(canvasSize, canvasSize, canvasSize - r, canvasSize);
+            ctx.lineTo(r, canvasSize);
+            ctx.quadraticCurveTo(0, canvasSize, 0, canvasSize - r);
+            ctx.lineTo(0, r);
+            ctx.quadraticCurveTo(0, 0, r, 0);
+            ctx.closePath();
+            ctx.clip();
+
+            // Draw source image clipped to rounded rect
+            ctx.drawImage(sourceImg, 0, 0, canvasSize, canvasSize);
+
+            // Add as canvas texture in Phaser
+            this.textures.addCanvas('game_icon_rounded', canvas);
+        }
+
+        this.topLeftCTA = this.add.container(marginX, marginY);
+        this.topLeftCTA.setDepth(600);
+
+        // App Icon drop shadow
+        const iconShadow = this.add.graphics();
+        iconShadow.fillStyle(0x000000, 0.35);
+        iconShadow.fillRoundedRect(0, 3, iconSize, iconSize, cornerRadius);
+        this.topLeftCTA.add(iconShadow);
+
+        // Perfectly clipped Rounded App Icon Image
+        const icon = this.add.image(iconSize / 2, iconSize / 2, 'game_icon_rounded');
+        icon.setDisplaySize(iconSize, iconSize);
+        this.topLeftCTA.add(icon);
+
+        // White border frame on top of the rounded icon
+        const iconBorder = this.add.graphics();
+        iconBorder.lineStyle(3, 0xffffff, 1);
+        iconBorder.strokeRoundedRect(0, 0, iconSize, iconSize, cornerRadius);
+        this.topLeftCTA.add(iconBorder);
+
+        // Play Now Button underneath the icon
+        const btnW = 76;
+        const btnH = 26;
+        const btnX = (iconSize - btnW) / 2;
+        const btnY = iconSize + 6;
+
+        const btnContainer = this.add.container(btnX + btnW / 2, btnY + btnH / 2);
+
+        const btnBg = this.add.graphics();
+        // Drop shadow for button
+        btnBg.fillStyle(0x000000, 0.3);
+        btnBg.fillRoundedRect(-btnW / 2, -btnH / 2 + 2, btnW, btnH, 13);
+        // Vibrant green button background
+        btnBg.fillStyle(0x22c55e, 1);
+        btnBg.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 13);
+        // White stroke border
+        btnBg.lineStyle(2, 0xffffff, 1);
+        btnBg.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, 13);
+        btnContainer.add(btnBg);
+
+        const btnText = this.add.text(0, 0, 'PLAY NOW', {
+            fontFamily: '"Arial Black", Impact, sans-serif',
+            fontSize: '11px',
+            color: '#ffffff',
+            stroke: '#15803d',
+            strokeThickness: 3
+        }).setOrigin(0.5);
+        btnContainer.add(btnText);
+
+        this.topLeftCTA.add(btnContainer);
+
+        // Subtle pulsing animation on the Play Now button
+        this.tweens.add({
+            targets: btnContainer,
+            scaleX: 1.08,
+            scaleY: 1.08,
+            duration: 700,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        // Interactive hit area covering both Icon and Play Now button
+        const totalHeight = btnY + btnH;
+        const hitArea = this.add.zone(iconSize / 2, totalHeight / 2, Math.max(iconSize, btnW) + 12, totalHeight + 12);
+        hitArea.setInteractive({ useHandCursor: true });
+        hitArea.on('pointerdown', (pointer, localX, localY, event) => {
+            if (event && event.stopPropagation) event.stopPropagation();
+            this.ShowStore();
+        });
+        this.topLeftCTA.add(hitArea);
     }
 
     createTutorialHint() {
